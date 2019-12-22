@@ -12,6 +12,8 @@ import scala.concurrent.duration.{FiniteDuration, MILLISECONDS}
 import scala.collection.immutable.Set
 import java.util.concurrent.TimeUnit
 
+import warehouse._
+
 object App {
 
   object Root {

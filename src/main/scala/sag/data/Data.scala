@@ -5,7 +5,7 @@ import scala.collection.immutable
 case object Product {
     type Id = Int
 }
-case class Product(description: String)
+case class Product(id: Product.Id, description: String)
 
 case object Cart {
     type Id = Int
@@ -14,15 +14,15 @@ case class Cart(id: Cart.Id, pids: Seq[Product.Id])
 
 object Products {
     val products: Seq[Product] = Seq(
-        Product("P0"),
-        Product("P1"),
-        Product("P2"),
-        Product("P3"),
-        Product("P4"),
-        Product("P5"),
-        Product("P6"),
-        Product("P7"),
-        Product("P8"),
+        Product(0, "P0"),
+        Product(1, "P1"),
+        Product(2, "P2"),
+        Product(3, "P3"),
+        Product(4, "P4"),
+        Product(5, "P5"),
+        Product(6, "P6"),
+        Product(7, "P7"),
+        Product(8, "P8"),
     )
 }
 
