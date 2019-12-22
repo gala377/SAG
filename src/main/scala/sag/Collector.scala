@@ -18,14 +18,11 @@ import data._
 
 object Collector {
     sealed trait Command
-    final case class DownloadNext(sentTo: ActorRef[Message]) extends Command with CBorSerializable
-
-    sealed trait Message
-    final case class Data(content: Cart) extends Message
+    final case class DownloadNext(sentTo: ActorRef[Joiner.Message]) extends Command with CborSerializable
 
     case object TimerKey
 
-    def apply(sendTo: ActorRef[Message], timeout: FiniteDuration): Behavior[Command] = 
+    def apply(sendTo: ActorRef[Joiner.Message], timeout: FiniteDuration): Behavior[Command] = 
       Behaviors.setup { ctx =>
           Behaviors.withTimers { timer =>
             ctx.self ! DownloadNext(sendTo)
@@ -43,7 +40,8 @@ class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuratio
         case (ctx, DownloadNext(sendTo)) =>
           val new_id = id + 1
           val cart = randomCart(id)
-          sendTo ! Data(cart)
+          ctx.log.info(s"Sending cart $cart")
+          sendTo ! Joiner.Data(cart)
           timer.startSingleTimer(TimerKey, DownloadNext(sendTo), timeout)
           collect(new_id)
     }
@@ -54,13 +52,13 @@ class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuratio
           if (productsNum == 0) 
               cart 
           else 
-              addProducts(Cart(cart.id, cart.pids :+ randomProduct), productsNum-1)
+              addProducts(Cart(cart.id, cart.pids :+ randomProductId), productsNum-1)
         
         val numOfProducts = Random.nextInt(maxNumOfProducts)
         addProducts(Cart(id, Seq()), numOfProducts)
     }
 
-    def randomProduct: Product =
-        Products.products(Random.nextInt(Products.products.length)
+    def randomProductId: Product.Id =
+        Random.nextInt(Products.products.length)
 }
 

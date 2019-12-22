@@ -14,6 +14,7 @@ case class Cart(id: Cart.Id, pids: Seq[Product.Id])
 
 object Products {
     val products: Seq[Product] = Seq(
+        Product("P0"),
         Product("P1"),
         Product("P2"),
         Product("P3"),
@@ -22,7 +23,6 @@ object Products {
         Product("P6"),
         Product("P7"),
         Product("P8"),
-        Product("P9"),
     )
 }
 
