@@ -1,6 +1,7 @@
 package sag.data
 
-import scala.collection.immutable
+import scala.collection.immutable.Seq
+
 
 case object Product {
     type Id = Int

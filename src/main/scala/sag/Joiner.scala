@@ -1,23 +1,16 @@
 package sag
 
-import scala.collection.immutable.{
-    Map,
-    Seq,
-}
-import scala.concurrent.duration.FiniteDuration
+import scala.collection.immutable.{Map, Seq}
 
-import akka.actor.typed.{
-  ActorRef,
-  Behavior,
-}
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{
   Behaviors, 
-  TimerScheduler,
   ActorContext,
 }
 
 import data._
-import warehouse._
+import warehouse.Warehouse
+
 
 object Joiner {
     // Should be a Set[Cart] but to do so
