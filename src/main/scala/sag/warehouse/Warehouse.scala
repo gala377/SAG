@@ -21,9 +21,8 @@ import akka.actor.typed.scaladsl.{
 import sag.data._
 
 object Warehouse {
-    private[warehouse] object Order {
-        type Id = Int
-    }
+    
+
     private[warehouse] type Orders = Map[Order.Id, OrderInfo]
     private[warehouse] object OrderInfo {
 
@@ -59,6 +58,9 @@ object Warehouse {
         ps: Seq[Product.Id],
         sendTo: ActorRef[Receipt]
     ) extends Message with CborSerializable
+    object Order {
+        type Id = Int
+    }
     final case class Receipt(
         id: Int,
         ps: Seq[Product]
@@ -79,18 +81,24 @@ private class Warehouse {
     def listen(orders: Orders): Behavior[Message] = Behaviors.receive { 
         (ctx, message) => message match {
             case Order(id, ps, sender) => {
+                ctx.log.info(s"Order received $id: $ps")
                 val newOrders = orders + (id -> OrderInfo(sender, ps))
+                queueOrder(ctx, id, OrderInfo(sender, ps))
                 listen(newOrders)
             }
             case ProductFetched(id, product) => {
+                ctx.log.info(s"Fetched product $product for order $id")
                 val order = orders.get(id) match {
                     case None => return Behaviors.same;
                     case Some(order) => order
                 }
                 order.addProduct(product.id, product) match {
-                    case OrderInfo.Incompleted(order) =>
+                    case OrderInfo.Incompleted(order) => {
+                        ctx.log.info(s"Order $id still incompleted")
                         listen(orders + (id -> order))
+                    }
                     case OrderInfo.Completed(order) => {
+                        ctx.log.info(s"Order $id completed")
                         val newOrders = orders - id
                         order.sender ! Receipt(
                             id,
@@ -112,6 +120,7 @@ private class Warehouse {
         order: OrderInfo): Unit = 
     {
         for(pid <- order.products.keys) {
+            ctx.log.info(s"Spawning fetcher for order: $id, product: $pid")
             ctx.spawnAnonymous(ProductFetcher(id, pid, ctx.self))
         }    
     }
@@ -124,7 +133,9 @@ private object ProductFetcher {
         pid: Product.Id,
         sendTo: ActorRef[Warehouse.ProductFetched]
     ): Behavior[AnyRef] = Behaviors.setup { ctx =>
+        ctx.log.info(s"Product fetcher spawned for order $oid product $pid")
         val product = Products.products(pid)
+        ctx.log.info(s"Got product $product. Sending to parent")
         sendTo ! Warehouse.ProductFetched(oid, product)
         Behaviors.stopped
     }

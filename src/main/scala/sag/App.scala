@@ -19,7 +19,8 @@ object App {
   object Root {
     def apply(): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
         val warehouse = ctx.spawnAnonymous(Warehouse())
-        val joiner = ctx.spawnAnonymous(Joiner(warehouse))
+        val recorder = ctx.spawnAnonymous(Recorder())
+        val joiner = ctx.spawnAnonymous(Joiner(warehouse, recorder))
         val collector = ctx.spawnAnonymous(Collector(
             joiner,
             FiniteDuration(2, TimeUnit.SECONDS)

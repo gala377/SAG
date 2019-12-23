@@ -11,6 +11,7 @@ case object Cart {
     type Id = Int
 }
 case class Cart(id: Cart.Id, pids: Seq[Product.Id])
+case class JoinedCart(id: Cart.Id, ps: Seq[Product])
 
 object Products {
     val products: Seq[Product] = Seq(
