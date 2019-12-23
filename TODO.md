@@ -1,5 +1,16 @@
 # TODO list
 
+## Clustering
+
+Clustering is not supporter yet.
+It is closely related to the failure
+strategies so check this out first. 
+
+### **Roles**
+
+App module should start different module
+based on the role given to the cluster.
+
 ## Failure strategies
 
 Each subsection in this section covers
