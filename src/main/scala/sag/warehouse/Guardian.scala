@@ -17,5 +17,4 @@ object Guardian extends actors.Guardian {
       ctx.system.receptionist ! Receptionist.Register(ServiceKey, warehouse)
       Behaviors.ignore
     }
-
 }

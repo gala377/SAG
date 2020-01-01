@@ -79,30 +79,26 @@ private class Warehouse {
                 queueOrder(ctx, id, OrderInfo(sender, ps))
                 listen(newOrders)
             }
-            case ProductFetched(id, product) => {
+            case ProductFetched(id, product) =>
                 ctx.log.info(s"Fetched product $product for order $id")
                 val order = orders.get(id) match {
                     case None => return Behaviors.same;
                     case Some(order) => order
                 }
                 order.addProduct(product.id, product) match {
-                    case OrderInfo.Incompleted(order) => {
+                    case OrderInfo.Incompleted(order) =>
                         ctx.log.info(s"Order $id still incompleted")
                         listen(orders + (id -> order))
-                    }
-                    case OrderInfo.Completed(order) => {
+                    case OrderInfo.Completed(order) =>
                         ctx.log.info(s"Order $id completed")
                         val newOrders = orders - id
                         order.sender ! Receipt(
                             id,
                             order.products
-                                .map{case (_, p) => p}
-                                .flatten
-                                .toSeq)
+                              .flatMap { case (_, p) => p }
+                              .toSeq)
                         listen(newOrders)
-                    }
                 }
-            }
             case _ => Behaviors.same
         }
     }
