@@ -1,29 +1,51 @@
 package sag
 
-import java.util.concurrent.TimeUnit
-import scala.concurrent.duration.{FiniteDuration}
+import scala.collection.immutable.Map
 
 import akka.actor.typed.{ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
+import akka.cluster.typed.Cluster
 
-import warehouse.Warehouse
+import com.typesafe.config.ConfigFactory
 
 
 object App {
+  
+  val Roles: Map[String, actors.Guardian] = Map(
+    ("collector", collector.Guardian),
+    ("joiner", joiner.Guardian),
+    ("warehouse", warehouse.Guardian),
+    ("recorder", recorder.Guardian),
+  )
+
   object Root {
-    def apply(): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
-        val warehouse = ctx.spawnAnonymous(Warehouse())
-        val recorder = ctx.spawnAnonymous(Recorder())
-        val joiner = ctx.spawnAnonymous(Joiner(warehouse, recorder))
-        val collector = ctx.spawnAnonymous(Collector(
-            joiner,
-            FiniteDuration(2, TimeUnit.SECONDS)
-        ))
-        Behaviors.ignore
+    def apply(args: Array[String]): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
+        ctx.log.info(s"Starting actor system.")
+        val cluster = Cluster(ctx.system)
+        for((role, actor) <- Roles) {
+          if(cluster.selfMember.hasRole(role)) {
+            ctx.log.info(s"System role is $role")
+            ctx.spawnAnonymous(actor(args))
+            Behaviors.ignore
+          }
+        }
+        throw new RuntimeException("Uknown role")
     }
   }
 
   def main(args: Array[String]): Unit = {
-    val system = ActorSystem[Nothing](Root(), "Sag")
+    if (args.size < 2) {
+      throw new RuntimeException("Need a role and a port")
+    }
+    start(args(0), args(1).toInt, args.drop(2))
+  }
+
+  def start(role: String, port: Int, args: Array[String]): Unit = {
+    val config = ConfigFactory.parseString(s"""
+      akka.remote.artery.canonical.port=$port
+      akka.cluster.roles = [$role]
+    """).withFallback(ConfigFactory.load("application"))
+
+    val system = ActorSystem[Nothing](Root(args), "Sag", config)
   }
 }

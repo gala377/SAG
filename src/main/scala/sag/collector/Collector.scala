@@ -1,4 +1,4 @@
-package sag
+package sag.collector
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -13,8 +13,8 @@ import akka.actor.typed.scaladsl.{
   TimerScheduler,
 }
 
-import data._
-
+import sag.data._
+import sag.joiner.Joiner
 
 object Collector {
     sealed trait Command
@@ -33,7 +33,7 @@ object Collector {
     val maxNumOfProducts = 10
 }
 
-class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
+private class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
     import Collector._
 
     def collect(id: Int): Behavior[Command] = Behaviors.receive{

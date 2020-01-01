@@ -1,0 +1,156 @@
+package sag.joiner
+
+import akka.actor.typed.scaladsl.ActorContext
+import akka.actor.typed.ActorRef
+import akka.actor.typed.Behavior
+import akka.actor.typed.receptionist.Receptionist
+import akka.actor.typed.receptionist
+import akka.actor.typed.scaladsl.Behaviors
+import sag.actors
+import sag.warehouse
+import sag.recorder
+
+object Guardian extends actors.Guardian {
+
+  val ServiceKey: receptionist.ServiceKey[Joiner.Message] =
+    receptionist.ServiceKey("Joiner")
+
+  def apply(args: Array[String]): Behavior[Receptionist.Listing] =
+    Behaviors.setup { ctx =>
+      ctx.system.receptionist ! Receptionist.Find(
+        warehouse.Guardian.ServiceKey, ctx.self)
+      ctx.system.receptionist ! Receptionist.Find(
+        recorder.Guardian.ServiceKey, ctx.self)
+      new Guardian().findDependantActors(IncompleteState(None, None))
+    }
+
+  final case class IncompleteState(
+    rec: Option[ActorRef[recorder.Recorder.Data]],
+    war: Option[ActorRef[warehouse.Warehouse.Message]],
+  ) {
+    def isComplete: Boolean = rec.isDefined && war.isDefined
+
+    def unwrap: (ActorRef[recorder.Recorder.Data], ActorRef[warehouse.Warehouse.Message]) =
+      if (isComplete) {
+        (rec.get, war.get)
+      } else {
+        throw new RuntimeException("Trying to unwrap incompleted state")
+      }
+  }
+
+  final case class WorkingState(
+    joiner: ActorRef[Joiner.Message],
+    rec: ActorRef[recorder.Recorder.Data],
+    war: ActorRef[warehouse.Warehouse.Message],
+  )
+
+}
+
+private class Guardian {
+
+  import Guardian._
+
+  def findDependantActors(
+    state: IncompleteState
+  ): Behavior[Receptionist.Listing] = Behaviors.receive {
+    (ctx, message) =>
+      message match {
+        case warehouse.Guardian.ServiceKey.Listing(addresses) =>
+          findDependantWarehouse(state, addresses, ctx)
+        case recorder.Guardian.ServiceKey.Listing(addresses) =>
+          findDependantRecorder(state, addresses, ctx)
+        case _ => findDependantActors(state)
+      }
+  }
+
+  def findDependantWarehouse(
+    state: IncompleteState,
+    addresses: Set[ActorRef[warehouse.Warehouse.Message]],
+    ctx: ActorContext[Receptionist.Listing]
+  ): Behavior[Receptionist.Listing] =
+    if (addresses.isEmpty) {
+      ctx.log.info("Warehouses are empty, subscribing to other events")
+      ctx.system.receptionist ! Receptionist.Subscribe(
+        warehouse.Guardian.ServiceKey, ctx.self)
+      findDependantActors(IncompleteState(state.rec, None))
+    } else {
+      val warRef = addresses.toIndexedSeq(0)
+      ctx.system.receptionist ! Receptionist.Subscribe(
+        warehouse.Guardian.ServiceKey, ctx.self)
+      attemptToSpawnJoiner(
+        IncompleteState(state.rec, Some(warRef)),
+        ctx)
+    }
+
+  def findDependantRecorder(
+    state: IncompleteState,
+    addresses: Set[ActorRef[recorder.Recorder.Data]],
+    ctx: ActorContext[Receptionist.Listing]
+  ): Behavior[Receptionist.Listing] =
+    if (addresses.isEmpty) {
+      ctx.log.info("Recorders are empty, subscribing to other events")
+      ctx.system.receptionist ! Receptionist.Subscribe(
+        recorder.Guardian.ServiceKey, ctx.self)
+      findDependantActors(IncompleteState(None, state.war))
+    } else {
+      val recRef = addresses.toIndexedSeq(0)
+      ctx.system.receptionist ! Receptionist.Subscribe(
+        recorder.Guardian.ServiceKey, ctx.self)
+      attemptToSpawnJoiner(
+        IncompleteState(Some(recRef), state.war),
+        ctx)
+    }
+
+  def attemptToSpawnJoiner(
+    state: IncompleteState,
+    ctx: ActorContext[Receptionist.Listing]
+  ): Behavior[Receptionist.Listing] =
+    if (state.isComplete) {
+      val (rec, war) = state.unwrap
+      val joiner = ctx.spawnAnonymous(Joiner(war, rec))
+      ctx.system.receptionist ! Receptionist.Register(
+        ServiceKey, joiner)
+      monitorDependantActors(WorkingState(joiner, rec, war))
+    } else {
+      findDependantActors(state)
+    }
+
+  def monitorDependantActors(
+    state: WorkingState
+  ): Behavior[Receptionist.Listing] = Behaviors.receive {
+    (ctx, message) =>
+      message match {
+        case warehouse.Guardian.ServiceKey.Listing(addresses) =>
+          checkWarehouse(state, addresses, ctx)
+        case recorder.Guardian.ServiceKey.Listing(addresses) =>
+          checkRecorder(state, addresses, ctx)
+        case _ => monitorDependantActors(state)
+      }
+  }
+
+  def checkWarehouse(
+    state: WorkingState,
+    addresses: Set[ActorRef[warehouse.Warehouse.Message]],
+    ctx: ActorContext[Receptionist.Listing]
+  ): Behavior[Receptionist.Listing] =
+    if (addresses(state.war)) {
+      monitorDependantActors(state)
+    } else {
+      ctx.log.warn("Warehouse left the cluster. Need change into caching mode")
+      // TODO
+      throw new RuntimeException("I don't know what to do")
+    }
+
+    def checkRecorder(
+      state: WorkingState,
+      addresses: Set[ActorRef[recorder.Recorder.Data]],
+      ctx: ActorContext[Receptionist.Listing]
+    ): Behavior[Receptionist.Listing] =
+      if(addresses(state.rec)) {
+        monitorDependantActors(state)
+      }  else {
+        ctx.log.warn("Recorder left the cluster. Need change into caching mode")
+        // TODO
+        throw new RuntimeException("I don't know what to do")
+      }
+}

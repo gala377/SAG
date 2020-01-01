@@ -7,7 +7,7 @@ import akka.actor.typed.{
     Behavior,
 }
 import akka.actor.typed.scaladsl.{
-    Behaviors, 
+    Behaviors,
     ActorContext,
 }
 
@@ -15,7 +15,6 @@ import sag.data._
 
 
 object Warehouse {
-    
 
     private[warehouse] type Orders = Map[Order.Id, OrderInfo]
     private[warehouse] object OrderInfo {
@@ -64,15 +63,15 @@ object Warehouse {
         product: Product
     ) extends Message with CborSerializable
 
-    def apply(): Behavior[Message] = 
+    def apply(): Behavior[Message] =
         new Warehouse().listen(Map())
 }
 
 private class Warehouse {
-    
+
     import Warehouse._
 
-    def listen(orders: Orders): Behavior[Message] = Behaviors.receive { 
+    def listen(orders: Orders): Behavior[Message] = Behaviors.receive {
         (ctx, message) => message match {
             case Order(id, ps, sender) => {
                 ctx.log.info(s"Order received $id: $ps")
@@ -100,8 +99,8 @@ private class Warehouse {
                                 .map{case (_, p) => p}
                                 .flatten
                                 .toSeq)
-                        listen(newOrders) 
-                    } 
+                        listen(newOrders)
+                    }
                 }
             }
             case _ => Behaviors.same
@@ -111,12 +110,12 @@ private class Warehouse {
     def queueOrder(
         ctx: ActorContext[Message],
         id: Order.Id,
-        order: OrderInfo): Unit = 
+        order: OrderInfo): Unit =
     {
         for(pid <- order.products.keys) {
             ctx.log.info(s"Spawning fetcher for order: $id, product: $pid")
             ctx.spawnAnonymous(ProductFetcher(id, pid, ctx.self))
-        }    
+        }
     }
 }
 

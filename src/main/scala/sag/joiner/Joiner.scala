@@ -1,4 +1,4 @@
-package sag
+package sag.joiner
 
 import scala.collection.immutable.{Map, Seq}
 
@@ -8,9 +8,9 @@ import akka.actor.typed.scaladsl.{
   ActorContext,
 }
 
-import data._
-import warehouse.Warehouse
-
+import sag.data._
+import sag.warehouse.Warehouse
+import sag.recorder.Recorder
 
 object Joiner {
     // Should be a Set[Cart] but to do so
@@ -33,33 +33,29 @@ object Joiner {
         new Joiner(warehouse, recorder).listen(Map())
 }
 
-class Joiner(
+private class Joiner(
     warehouse: ActorRef[Warehouse.Message],
     recorder: ActorRef[Recorder.Data]) 
 {
+    // TODO: Caching state
     import Joiner._
 
     def listen(pending: Carts): Behavior[Message] =
         Behaviors.receive { (ctx, message) => message match {
-            case Data(cart) => {
+            case Data(cart) =>
                 ctx.log.info(s"Got new cart $cart")
                 queueCart(ctx, cart)
                 val newPending = pending + (cart.id -> cart)
                 listen(newPending)
-            }
-            case Products(id, ps) => {
+            case Products(id, ps) =>
                 ctx.log.info(s"Got products $ps")
                 val newPending = pending - id
                 recorder ! Recorder.Data(JoinedCart(id, ps))
                 listen(newPending)
-            }
-            case ListCarts(sendTo) => {
+            case ListCarts(sendTo) =>
                 sendCarts(sendTo, pending)
                 Behaviors.same
-            }
-            case _ => {
-                Behaviors.same
-            }
+            case _ => Behaviors.same
         }
     }
 
