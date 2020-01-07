@@ -16,7 +16,7 @@ object Guardian extends actors.Guardian {
     def apply(args: Array[String]): Behavior[Receptionist.Listing] = 
         Behaviors.setup { ctx =>
           // TODO: Not working
-            ctx.system.receptionist ! Receptionist.Find(joiner.Gurdian.ServiceKey)
+            ctx.system.receptionist ! Receptionist.Find(joiner.Guardian.ServiceKey)
         }
 }
 
