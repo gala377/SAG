@@ -1,4 +1,4 @@
-package sag.data
+package sag.types
 
 case object Cart {
     type Id = Int

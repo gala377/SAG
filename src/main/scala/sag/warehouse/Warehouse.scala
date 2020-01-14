@@ -11,7 +11,7 @@ import akka.actor.typed.scaladsl.{
     ActorContext,
 }
 
-import sag.data._
+import sag.types._
 
 
 object Warehouse {

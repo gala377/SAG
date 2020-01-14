@@ -1,4 +1,4 @@
-package sag.data
+package sag.types
 
 import org.scalatest._
 

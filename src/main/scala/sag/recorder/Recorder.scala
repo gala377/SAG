@@ -2,7 +2,7 @@ package sag.recorder
 
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
-import sag.data.{CborSerializable, JoinedCart}
+import sag.types.{CborSerializable, JoinedCart}
 
 
 object Recorder {
@@ -21,7 +21,7 @@ object Recorder {
 
     def cartRepr(cart: JoinedCart): String = {
         var repr = s"\tCart's id: ${cart.id}\n"
-        for (p <- cart.ps) {
+        for (p <- cart.products) {
             repr += s"\t\tProduct[${p.id}]: ${p.description}\n"
         }
         repr

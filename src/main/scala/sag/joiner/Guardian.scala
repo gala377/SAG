@@ -9,6 +9,9 @@ import akka.actor.typed.scaladsl.Behaviors
 import sag.actors
 import sag.warehouse
 import sag.recorder
+import sag.joiner.Joiner.StartCaching
+import sag.types.{CacheWarehouse, CacheRecorded}
+import sag.joiner.Joiner.StopCachingWarehouse
 
 object Guardian extends actors.Guardian {
 
@@ -40,9 +43,26 @@ object Guardian extends actors.Guardian {
 
   final case class WorkingState(
     joiner: ActorRef[Joiner.Message],
-    rec: ActorRef[recorder.Recorder.Data],
-    war: ActorRef[warehouse.Warehouse.Message],
-  )
+    rec: Option[ActorRef[recorder.Recorder.Data]],
+    war: Option[ActorRef[warehouse.Warehouse.Message]],
+  ) {
+    def isComplete: Boolean = rec.isDefined && war.isDefined
+  }
+
+  // final case class CachingState(
+  //   joiner: ActorRef[Joiner.Message],
+  //   rec: Option[ActorRef[recorder.Recorder.Data]],
+  //   war: Option[ActorRef[warehouse.Warehouse.Message]],
+  // ) {
+  //   def isComplete: Boolean = rec.isDefined && war.isDefined
+
+  //   def unwrap: (ActorRef[Joiner.Message], ActorRef[recorder.Recorder.Data], ActorRef[warehouse.Warehouse.Message]) = 
+  //     if (isComplete) {
+  //       (joiner, rec.get, war.get)
+  //     } else {
+  //       throw new RuntimeException("Trying to unwrap incompleted state")
+  //     }
+  // }
 
 }
 
@@ -110,7 +130,7 @@ private class Guardian {
       val joiner = ctx.spawnAnonymous(Joiner(war, rec))
       ctx.system.receptionist ! Receptionist.Register(
         ServiceKey, joiner)
-      monitorDependantActors(WorkingState(joiner, rec, war))
+      monitorDependantActors(WorkingState(joiner, Some(rec), Some(war)))
     } else {
       findDependantActors(state)
     }
@@ -128,29 +148,42 @@ private class Guardian {
       }
   }
 
+  // TODO: not sure if this is correct
   def checkWarehouse(
     state: WorkingState,
     addresses: Set[ActorRef[warehouse.Warehouse.Message]],
     ctx: ActorContext[Receptionist.Listing]
-  ): Behavior[Receptionist.Listing] =
-    if (addresses(state.war)) {
-      monitorDependantActors(state)
-    } else {
-      ctx.log.warn("Warehouse left the cluster. Need change into caching mode")
-      // TODO
-      throw new RuntimeException("I don't know what to do")
+  ): Behavior[Receptionist.Listing] = {
+    if (state.war.isDefined && addresses.contains(state.war.get) == false) {
+      ctx.log.warn("Warehouse left the cluster. Changing into caching mode")
+      state.joiner ! StartCaching(CacheWarehouse)
+
+      return monitorDependantActors(WorkingState(state.joiner, state.rec, None))
     }
 
-    def checkRecorder(
-      state: WorkingState,
-      addresses: Set[ActorRef[recorder.Recorder.Data]],
-      ctx: ActorContext[Receptionist.Listing]
-    ): Behavior[Receptionist.Listing] =
-      if(addresses(state.rec)) {
-        monitorDependantActors(state)
-      }  else {
-        ctx.log.warn("Recorder left the cluster. Need change into caching mode")
-        // TODO
-        throw new RuntimeException("I don't know what to do")
-      }
+    if (state.war.isEmpty && addresses.nonEmpty) {
+      ctx.log.info("Found new warehouse. Stopping caching")
+
+      val war = addresses.toIndexedSeq(0)
+      state.joiner ! StopCachingWarehouse(war)
+      return monitorDependantActors(WorkingState(state.joiner, state.rec, Some(war)))
+    }
+
+    // All good, continue
+    return monitorDependantActors(WorkingState(state.joiner, state.rec, None))
+  }
+
+  def checkRecorder(
+    state: WorkingState,
+    addresses: Set[ActorRef[recorder.Recorder.Data]],
+    ctx: ActorContext[Receptionist.Listing]
+  ): Behavior[Receptionist.Listing] =
+    if(addresses(state.rec.get) && state.rec.isDefined) {
+      monitorDependantActors(state)
+    }  else {
+      ctx.log.warn("Recorder left the cluster. Changing into caching mode")
+      state.joiner ! StartCaching(CacheRecorded)
+      
+      monitorDependantActors(WorkingState(state.joiner, None, state.war))
+    }
 }

@@ -1,4 +1,4 @@
-package sag.data
+package sag.types
 
 import scala.collection.immutable.Seq
 
@@ -7,12 +7,6 @@ case object Product {
     type Id = Int
 }
 case class Product(id: Product.Id, description: String)
-
-case object Cart {
-    type Id = Int
-}
-case class Cart(id: Cart.Id, pids: Seq[Product.Id])
-case class JoinedCart(id: Cart.Id, ps: Seq[Product])
 
 object Products {
     val products: Seq[Product] = Seq(

@@ -13,7 +13,7 @@ import akka.actor.typed.scaladsl.{
   TimerScheduler,
 }
 
-import sag.data._
+import sag.types._
 import sag.joiner.Joiner
 
 object Collector {
