@@ -36,6 +36,7 @@ object Joiner {
 }
 
 private class Joiner(
+    // TODO: can't have vars here. This will lead to data races. Change to val s: JoinerState
     var warehouse: ActorRef[Warehouse.Message],
     var recorder: ActorRef[Recorder.Data]) 
 {

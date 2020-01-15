@@ -12,6 +12,7 @@ import sag.recorder
 import sag.joiner.Joiner.StartCaching
 import sag.types.{CacheWarehouse, CacheRecorded}
 import sag.joiner.Joiner.StopCachingWarehouse
+import sag.joiner.Joiner.StopCachingRecorder
 
 object Guardian extends actors.Guardian {
 
@@ -169,21 +170,29 @@ private class Guardian {
       return monitorDependantActors(WorkingState(state.joiner, state.rec, Some(war)))
     }
 
-    // All good, continue
-    return monitorDependantActors(WorkingState(state.joiner, state.rec, None))
+    return monitorDependantActors(state)
   }
 
   def checkRecorder(
     state: WorkingState,
     addresses: Set[ActorRef[recorder.Recorder.Data]],
     ctx: ActorContext[Receptionist.Listing]
-  ): Behavior[Receptionist.Listing] =
-    if(addresses(state.rec.get) && state.rec.isDefined) {
-      monitorDependantActors(state)
-    }  else {
+  ): Behavior[Receptionist.Listing] = { 
+    if (state.rec.isDefined && addresses.contains(state.rec.get) == false) {
       ctx.log.warn("Recorder left the cluster. Changing into caching mode")
       state.joiner ! StartCaching(CacheRecorded)
-      
-      monitorDependantActors(WorkingState(state.joiner, None, state.war))
+
+      return monitorDependantActors(WorkingState(state.joiner, None, state.war))
     }
+
+    if (state.rec.isEmpty && addresses.nonEmpty) {
+      ctx.log.info("Found new recorder. Stopping caching")
+
+      val rec = addresses.toIndexedSeq(0)
+      state.joiner ! StopCachingRecorder(rec)
+      return monitorDependantActors(WorkingState(state.joiner, Some(rec), state.war))
+    }
+
+    return monitorDependantActors(state)
+  }
 }
