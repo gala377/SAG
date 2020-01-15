@@ -53,7 +53,6 @@ private class Guardian {
             message match {
                 case joiner.Guardian.ServiceKey.Listing(listings) =>
                     if (listings(joinerRef)) {
-                        ctx.log.info(s"Everything is good", listings)
                         Behaviors.same
                     }
                     else if (listings.isEmpty) {
