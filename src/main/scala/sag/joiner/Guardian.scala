@@ -90,7 +90,7 @@ private class Guardian {
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] =
     if (addresses.isEmpty) {
-      ctx.log.info("Warehouses are empty, subscribing to other events")
+      // ctx.log.info("Warehouses are empty, subscribing to other events")
       ctx.system.receptionist ! Receptionist.Subscribe(
         warehouse.Guardian.ServiceKey, ctx.self)
       findDependantActors(IncompleteState(state.rec, None))
@@ -109,7 +109,7 @@ private class Guardian {
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] =
     if (addresses.isEmpty) {
-      ctx.log.info("Recorders are empty, subscribing to other events")
+      // ctx.log.info("Recorders are empty, subscribing to other events")
       ctx.system.receptionist ! Receptionist.Subscribe(
         recorder.Guardian.ServiceKey, ctx.self)
       findDependantActors(IncompleteState(None, state.war))
@@ -127,6 +127,7 @@ private class Guardian {
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] =
     if (state.isComplete) {
+      ctx.log.info("Recorder and warehouse are present. Spawning joiner")
       val (rec, war) = state.unwrap
       val joiner = ctx.spawnAnonymous(Joiner(war, rec))
       ctx.system.receptionist ! Receptionist.Register(

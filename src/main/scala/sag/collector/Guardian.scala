@@ -76,11 +76,13 @@ private class Guardian {
     ): Behavior[Receptionist.Listing] = {
         Behaviors.receive { (ctx, message) =>
             message match {
-                case joiner.Guardian.ServiceKey.Listing(listings) =>
+                case joiner.Guardian.ServiceKey.Listing(listings) if !listings.isEmpty => {
                     val joiner = listings.toIndexedSeq(0)
                     ctx.log.info(s"Sending new joiner reference")
                     collectorRef ! StartSending(joiner)
                     checkState(joiner, collectorRef)
+                }
+                case _ => Behaviors.same
             }
         }
     }

@@ -69,22 +69,6 @@ No data from the collector
 Timeouts for the collector messages. 
 The same as with the recorder
 
-#### Problem 
-
-Recorder stops working
-
-#### Solution
-
-???
-
-#### Problem
-
-Warehouse stops working
-
-#### Solution
-
-???
-
 _____________________________
 ### **Warehouse**
 _____________________________
@@ -115,3 +99,18 @@ Timer which is reset each time a message is received.
 If the timer timeouts we communicate the failure to the
 client and reset the timer (or just wait for any message to
 come and then reset).
+
+
+
+### TODO 15.01.20
+
+* [Joiner] Timeout on missing data from collector
+* [Recorder] Timeout on missing data from joiner
+* Separate logs into Akka logs and  bussines logic logs
+* Fix clusters - errors and warnings
+* Duplication in carts
+  * Solution 1: generate carts without duplication in pids
+  * Solution 2: diffrent collection than set
+  * Solution 3: keep in joiner all known products
+* No vars in actor classes - leads to races. Use vals
+* [Collector] When Joiner dies and is restarted this fact is not picked by Collector  

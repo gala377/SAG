@@ -26,7 +26,7 @@ object App {
           if(cluster.selfMember.hasRole(role)) {
             ctx.log.info(s"System role is $role")
             ctx.spawnAnonymous(actor(args))
-            Behaviors.ignore
+            return Behaviors.ignore
           }
         }
         throw new RuntimeException("Uknown role")
