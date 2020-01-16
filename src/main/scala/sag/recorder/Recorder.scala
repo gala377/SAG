@@ -1,22 +1,45 @@
 package sag.recorder
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 import sag.types.{CborSerializable, JoinedCart}
 
+import scala.concurrent.duration.FiniteDuration
 
 object Recorder {
+    val RECORDER_TIMEOUT_IN_SEC = 30
+    val timeout = new FiniteDuration(RECORDER_TIMEOUT_IN_SEC, TimeUnit.SECONDS)
 
-    final case class Data(content: JoinedCart) extends CborSerializable
+    case object TimerKey
 
-    def apply(): Behavior[Data] = logMessages()
+    sealed trait Message
 
-    def logMessages(): Behavior[Data] = Behaviors.receive {
-        // TODO: timeout on joiner so that we can print
-        // TODO: an error message
+    final case class Data(content: JoinedCart) extends Message with CborSerializable
+
+    final case class TimeoutMsg() extends Message with CborSerializable
+
+    def apply(): Behavior[Message] = {
+        Behaviors.withTimers { timers =>
+            timers.startSingleTimer(TimerKey, TimeoutMsg(), timeout)
+            logMessages(timers)
+        }
+    }
+
+    def logMessages(timer: TimerScheduler[Message]): Behavior[Message] = Behaviors.receive {
         (ctx, message) =>
-            ctx.log.info(s"Got cart:\n${cartRepr(message.content)}")
-            Behaviors.same
+            message match {
+                case Data(cart) => {
+                    ctx.log.info(s"Got cart:\n${cartRepr(cart)}")
+                    timer.startSingleTimer(TimerKey, TimeoutMsg(), timeout)
+                    Behaviors.same
+                }
+                case TimeoutMsg() => {
+                    ctx.log.warn("RECORDER TIMEOUT!")
+                    Behaviors.same
+                }
+            }
     }
 
     def cartRepr(cart: JoinedCart): String = {
