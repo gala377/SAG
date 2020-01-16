@@ -2,9 +2,9 @@ package sag.collector
 
 import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior}
-import sag.types._
 import sag.joiner
 import sag.joiner.Joiner
+import sag.types._
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
@@ -26,7 +26,7 @@ object Collector {
         Behaviors.setup { ctx =>
             Behaviors.withTimers { timer =>
                 ctx.self ! DownloadNext()
-                new Collector(timer, timeout).collect(0, Option(sendTo))
+                new Collector(timer, timeout).collectAndSend(0, sendTo)
             }
         }
 
@@ -37,33 +37,42 @@ private class Collector(timer: TimerScheduler[Collector.Command], timeout: Finit
 
     import Collector._
 
-    var msgSet: Set[Cart] = Set()
-
-    def collect(id: Int, joinerRef: Option[ActorRef[joiner.Joiner.Message]]): Behavior[Command] = Behaviors.receive {
-        case (ctx, StartCaching()) =>
-            ctx.log.info(s"Caching messages started")
-            collect(id, None)
-        case (ctx, StartSending(sentTo)) =>
-            //todo we will probably lose data if joiner dies when sending cached msg
-            msgSet.foreach(cart => {
-                ctx.log.info(s"Sending cached cart $cart")
-                sentTo ! Joiner.Data(cart)
-            })
-            msgSet = Set()
-            collect(id, Option(sentTo))
-        case (ctx, DownloadNext()) =>
-            val new_id = id + 1
-            val cart = randomCart(id)
-            if (joinerRef.isEmpty) {
-                ctx.log.info(s"Caching cart $cart")
-                msgSet += cart
-            } else {
-                ctx.log.info(s"Sending cart $cart")
-                joinerRef.get ! Joiner.Data(cart)
+    def collectAndSend(id: Int, joinerRef: ActorRef[joiner.Joiner.Message]): Behavior[Command] =
+        Behaviors.receive { (ctx, message) =>
+            message match {
+                case StartCaching() =>
+                    ctx.log.info(s"Caching messages started")
+                    collectAndCache(id, Set())
+                case StartSending(sentTo) =>
+                    collectAndSend(id, sentTo)
+                case DownloadNext() =>
+                    val cart = randomCart(id)
+                    ctx.log.info(s"Sending cart $cart")
+                    joinerRef ! Joiner.Data(cart)
+                    timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
+                    collectAndSend(id + 1, joinerRef)
             }
-            timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
-            collect(new_id, joinerRef)
-    }
+        }
+
+    def collectAndCache(id: Int, msgSet: Set[Cart]): Behavior[Command] =
+        Behaviors.receive { (ctx, message) =>
+            message match {
+                case StartCaching() =>
+                    Behaviors.same
+                case StartSending(sentTo) =>
+                    msgSet.foreach(cart => {
+                        ctx.log.info(s"Sending cached cart $cart")
+                        sentTo ! Joiner.Data(cart)
+                    })
+                    collectAndSend(id, sentTo)
+                case DownloadNext() =>
+                    val cart = randomCart(id)
+                    ctx.log.info(s"Caching cart $cart")
+                    timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
+                    collectAndCache(id + 1, msgSet + cart)
+            }
+        }
+
 
     def randomCart(id: Int): Cart = {
         @tailrec
