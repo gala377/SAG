@@ -21,9 +21,9 @@ object Guardian extends actors.Guardian {
 
   def apply(args: Array[String]): Behavior[Receptionist.Listing] =
     Behaviors.setup { ctx =>
-      ctx.system.receptionist ! Receptionist.Find(
+      ctx.system.receptionist ! Receptionist.Subscribe(
         warehouse.Guardian.ServiceKey, ctx.self)
-      ctx.system.receptionist ! Receptionist.Find(
+      ctx.system.receptionist ! Receptionist.Subscribe(
         recorder.Guardian.ServiceKey, ctx.self)
       new Guardian().findDependantActors(IncompleteState(None, None))
     }
@@ -90,14 +90,10 @@ private class Guardian {
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] =
     if (addresses.isEmpty) {
-      // ctx.log.info("Warehouses are empty, subscribing to other events")
-      ctx.system.receptionist ! Receptionist.Subscribe(
-        warehouse.Guardian.ServiceKey, ctx.self)
+      ctx.log.info("Warehouses are empty, subscribing to other events")
       findDependantActors(IncompleteState(state.rec, None))
     } else {
       val warRef = addresses.toIndexedSeq(0)
-      ctx.system.receptionist ! Receptionist.Subscribe(
-        warehouse.Guardian.ServiceKey, ctx.self)
       attemptToSpawnJoiner(
         IncompleteState(state.rec, Some(warRef)),
         ctx)
@@ -109,14 +105,10 @@ private class Guardian {
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] =
     if (addresses.isEmpty) {
-      // ctx.log.info("Recorders are empty, subscribing to other events")
-      ctx.system.receptionist ! Receptionist.Subscribe(
-        recorder.Guardian.ServiceKey, ctx.self)
+      ctx.log.info("Recorders are empty, subscribing to other events")
       findDependantActors(IncompleteState(None, state.war))
     } else {
       val recRef = addresses.toIndexedSeq(0)
-      ctx.system.receptionist ! Receptionist.Subscribe(
-        recorder.Guardian.ServiceKey, ctx.self)
       attemptToSpawnJoiner(
         IncompleteState(Some(recRef), state.war),
         ctx)
