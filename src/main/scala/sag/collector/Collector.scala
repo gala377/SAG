@@ -26,13 +26,13 @@ object Collector {
         Behaviors.setup { ctx =>
             Behaviors.withTimers { timer =>
                 ctx.self ! DownloadNext()
-                new Collector(timer, timeout).collectAndSend(0, sendTo)
+                new Collector(Random.nextInt(100000), timer, timeout).collectAndSend(0, sendTo)
             }
         }
     val maxNumOfProducts = 10
 }
 
-private class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
+private class Collector(id_prefix: Int, timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
 
     import Collector._
 
@@ -45,7 +45,7 @@ private class Collector(timer: TimerScheduler[Collector.Command], timeout: Finit
                 case StartSending(sentTo) =>
                     collectAndSend(id, sentTo)
                 case DownloadNext() =>
-                    val cart = randomCart(id)
+                    val cart = randomCart(id_prefix + "_" + id)
                     ctx.log.info(s"Sending cart $cart")
                     joinerRef ! Joiner.Data(cart)
                     timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
@@ -65,7 +65,7 @@ private class Collector(timer: TimerScheduler[Collector.Command], timeout: Finit
                     })
                     collectAndSend(id, sentTo)
                 case DownloadNext() =>
-                    val cart = randomCart(id)
+                    val cart = randomCart(id_prefix + "_" + id)
                     ctx.log.info(s"Caching cart $cart")
                     timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
                     collectAndCache(id + 1, msgSet + cart)
@@ -73,7 +73,7 @@ private class Collector(timer: TimerScheduler[Collector.Command], timeout: Finit
         }
 
 
-    def randomCart(id: Int): Cart = {
+    def randomCart(id: String): Cart = {
         @tailrec
         def addProducts(cart: Cart, productsNum: Int): Cart =
             if (productsNum == 0)

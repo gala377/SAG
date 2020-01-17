@@ -47,15 +47,15 @@ object Warehouse {
 
     sealed trait Message
     final case class Order(
-        id: Int,
+        id: String,
         ps: Seq[Product.Id],
         sendTo: ActorRef[Receipt]
     ) extends Message with CborSerializable
     object Order {
-        type Id = Int
+        type Id = String
     }
     final case class Receipt(
-        id: Int,
+        id: String,
         ps: Seq[Product]
     ) extends Message with CborSerializable
     private[warehouse] final case class ProductFetched(

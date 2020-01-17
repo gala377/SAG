@@ -1,7 +1,7 @@
 package sag.types
 
 case object Cart {
-    type Id = Int
+    type Id = String
 }
 
 case class Cart(id: Cart.Id, pids: Seq[Product.Id]) {
