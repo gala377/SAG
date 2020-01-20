@@ -17,4 +17,25 @@
         <appender-ref ref="ASYNC"/>
     </root>
 
+    <appender name="AKKA" class="ch.qos.logback.core.FileAppender">
+        <filter class="filters.AkkaFilter"/>
+        <file>log/akka.log</file>
+        <append>false</append>
+        <encoder>
+            <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="AKKA" />
+    </root>
+
+    <appender name="SAG" class="ch.qos.logback.core.FileAppender">
+        <filter class="filters.SagFilter"/>
+        <file>log/sag.log</file>
+            <append>false</append>
+            <encoder>
+                <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
+            </encoder>
+    </appender>
+
 </configuration>
