@@ -18,7 +18,7 @@ object Joiner {
     type JoinedCarts = Set[JoinedCart];
 
     final case class State(war: ActorRef[Warehouse.Message], rec: ActorRef[Recorder.Data], pendingCarts: Carts, 
-                           pendingJoinedCarts: JoinedCarts, cacheType: Option[CacheType] = None)
+                           pendingJoinedCarts: JoinedCarts, cacheType: Option[CacheType])
 
     sealed trait Message
     final case class Data(content: Cart) extends Message with CborSerializable
@@ -35,7 +35,7 @@ object Joiner {
         warehouse: ActorRef[Warehouse.Message],
         recorder: ActorRef[Recorder.Data]
     ): Behavior[Message] = 
-        new Joiner().listen(State(warehouse, recorder, Set(), Set()))
+        new Joiner().listen(State(warehouse, recorder, Set(), Set(), None))
 }
 
 private class Joiner() {
