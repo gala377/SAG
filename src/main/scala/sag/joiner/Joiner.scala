@@ -12,6 +12,7 @@ import sag.types._
 import sag.types.CacheType
 import sag.warehouse.Warehouse
 import sag.recorder.Recorder
+import scala.annotation.tailrec
 
 object Joiner {
     type Carts = Set[Cart];
@@ -52,11 +53,21 @@ private class Joiner(
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
                 val newPending = pending.filter(!_.id.equals(cartId))
-                var newPendingToSend = pendingToSend
-                if (cacheType.isEmpty || cacheType.get == CacheWarehouse) {
-                    recorder ! Recorder.Data(JoinedCart(cartId, ps))
+                val newPendingToSend = if (cacheType.isEmpty || cacheType.get == CacheWarehouse) {
+                    state.pending.find(_ == cartId) match {
+                        case Some(cart) => 
+                            joinCart(cart, ps) match {
+                                case None =>
+                                    ctx.log.error(s"Couldn't match all of the carts products. CartId $cartId")
+                                case Some(joinedCart) =>
+                                    recorder ! Recorder.Data(joinedCart)
+                            }
+                        case None =>
+                            ctx.log.error(s"Couldn't find cart with id $cartId")
+                    }
+                    pendingToSend
                 } else {
-                    newPendingToSend = newPendingToSend + JoinedCart(cartId, ps)
+                    pendingToSend + JoinedCart(cartId, ps)
                 }                
                 listen(newPending, newPendingToSend, cacheType)
             case ListCarts(sendTo) =>
@@ -101,4 +112,28 @@ private class Joiner(
         to: ActorRef[ListCartsResponse],
         pending: Carts
     ): Unit = to ! ListCartsResponse(pending)
+
+    def joinCart(cart: Cart, products: Set[Product]): Option[JoinedCart] = {
+        @tailrec
+        def _joinCart(
+            ids: Seq[Product.Id], 
+            ps: Set[Product],
+            res: JoinedCart,
+        ): Option[JoinedCart] = {
+            ids match {
+                case x :: idsTail => {
+                    val p = ps.find(_.id == x) match {
+                        case Some(p) => p
+                        case None => return None;
+                    }
+                    _joinCart(
+                        idsTail,
+                        ps, 
+                        res.copy(products = res.products + p))
+                }
+                case Nil => res,
+            }
+        }
+        _joinCart(cart.pids, products, JoinedCart(cart.id, Seq()))
+    }
 }
