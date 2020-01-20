@@ -20,7 +20,7 @@
     <appender name="AKKA" class="ch.qos.logback.core.FileAppender">
         <filter class="filters.AkkaFilter"/>
         <file>log/akka.log</file>
-        <append>false</append>
+        <append>true</append>
         <encoder>
             <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
         </encoder>
@@ -32,10 +32,13 @@
     <appender name="SAG" class="ch.qos.logback.core.FileAppender">
         <filter class="filters.SagFilter"/>
         <file>log/sag.log</file>
-            <append>false</append>
+            <append>true</append>
             <encoder>
                 <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
             </encoder>
     </appender>
+    <root level="INFO">
+        <appender-ref ref="SAG" />
+    </root>
 
 </configuration>
