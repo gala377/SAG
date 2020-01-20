@@ -26,10 +26,10 @@ object App {
           if(cluster.selfMember.hasRole(role)) {
             ctx.log.info(s"System role is $role")
             ctx.spawnAnonymous(actor(args))
-            return Behaviors.ignore
           }
         }
-        throw new RuntimeException("Uknown role")
+
+        Behaviors.empty
     }
   }
 
@@ -37,7 +37,13 @@ object App {
     if (args.size < 2) {
       throw new RuntimeException("Need a role and a port")
     }
-    start(args(0), args(1).toInt, args.drop(2))
+
+    val role = args(0)
+    if (!Roles.contains(role)) {
+      throw new RuntimeException(s"Unkown role $role")
+    }
+
+    start(role, args(1).toInt, args.drop(2))
   }
 
   def start(role: String, port: Int, args: Array[String]): Unit = {
