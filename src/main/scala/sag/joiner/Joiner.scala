@@ -47,7 +47,7 @@ private class Joiner() {
                 ctx.log.info(s"Got new cart $cart")
                 if (state.cacheType.isEmpty || state.cacheType.get == CacheRecorded) queueCart(ctx, state.war, cart)
                 val newPending = state.pendingCarts + cart
-                listen(State(state.war, state.rec, newPending, state.pendingJoinedCarts, state.cacheType))
+                listen(state.copy(pendingCarts=newPending))
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
                 val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
@@ -57,16 +57,19 @@ private class Joiner() {
                 } else {
                     newPendingToSend = newPendingToSend + JoinedCart(cartId, ps)
                 }                
-                listen(State(state.war, state.rec, newPending, newPendingToSend, state.cacheType))
+                listen(state.copy(
+                    pendingCarts=newPending, 
+                    pendingJoinedCarts=newPendingToSend
+                ))
             case ListCarts(sendTo) =>
                 sendCarts(sendTo, state.pendingCarts)
                 Behaviors.same
             case StartCaching(receivedCacheType: CacheType) =>
                 val newCacheType = calculateCacheType(state.cacheType, receivedCacheType)
-                listen(State(state.war, state.rec, state.pendingCarts, state.pendingJoinedCarts, newCacheType))
+                listen(state.copy(cacheType=newCacheType))
             case StopCachingWarehouse(newWarehouse) =>
                 state.pendingCarts.foreach(c => queueCart(ctx, newWarehouse, c))
-                listen(State(newWarehouse, state.rec, state.pendingCarts, state.pendingJoinedCarts, state.cacheType))
+                listen(state.copy(war=newWarehouse))
             case StopCachingRecorder(newRecorder) =>
                 // Since recorder does not respond we don't know if carts were actually saved
                 // TODO: maybe confirmation from Recorder ?
