@@ -18,6 +18,9 @@ object Joiner {
     type Carts = Set[Cart];
     type JoinedCarts = Set[JoinedCart];
 
+    final case class State(war: ActorRef[Warehouse.Message], rec: ActorRef[Recorder.Data], pendingCarts: Carts, 
+                           pendingJoinedCarts: JoinedCarts, cacheType: Option[CacheType] = None)
+
     sealed trait Message
     final case class Data(content: Cart) extends Message with CborSerializable
     final case class Products(id: Cart.Id, ps: Seq[Product]) extends Message with CborSerializable
@@ -33,28 +36,24 @@ object Joiner {
         warehouse: ActorRef[Warehouse.Message],
         recorder: ActorRef[Recorder.Data]
     ): Behavior[Message] = 
-        new Joiner(warehouse, recorder).listen(Set(), Set())
+        new Joiner().listen(State(warehouse, recorder, Set(), Set()))
 }
 
-private class Joiner(
-    // TODO: can't have vars here. This will lead to data races. Change to val s: JoinerState
-    var warehouse: ActorRef[Warehouse.Message],
-    var recorder: ActorRef[Recorder.Data]) 
-{
+private class Joiner() {
     import Joiner._
 
-    def listen(pending: Carts, pendingToSend: JoinedCarts, cacheType: Option[CacheType] = None): Behavior[Message] =
+    def listen(state: State): Behavior[Message] =
         Behaviors.receive { (ctx, message) => message match {
             case Data(cart) =>
                 ctx.log.info(s"Got new cart $cart")
-                if (cacheType.isEmpty || cacheType.get == CacheRecorded) queueCart(ctx, cart)
-                val newPending = pending + cart
-                listen(newPending, pendingToSend, cacheType)
+                if (state.cacheType.isEmpty || state.cacheType.get == CacheRecorded) queueCart(ctx, state.war, cart)
+                val newPending = state.pendingCarts + cart
+                listen(State(state.war, state.rec, newPending, state.pendingJoinedCarts, state.cacheType))
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
-                val newPending = pending.filter(!_.id.equals(cartId))
-                val newPendingToSend = if (cacheType.isEmpty || cacheType.get == CacheWarehouse) {
-                    state.pending.find(_ == cartId) match {
+                val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
+                val newPendingToSend = if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
+                    state.pendingCarts.find(_ == cartId) match {
                         case Some(cart) => 
                             joinCart(cart, ps) match {
                                 case None =>
@@ -69,26 +68,25 @@ private class Joiner(
                 } else {
                     pendingToSend + JoinedCart(cartId, ps)
                 }                
-                listen(newPending, newPendingToSend, cacheType)
+                listen(State(state.war, state.rec, newPending, newPendingToSend, state.cacheType))
             case ListCarts(sendTo) =>
-                sendCarts(sendTo, pending)
+                sendCarts(sendTo, state.pendingCarts)
                 Behaviors.same
             case StartCaching(receivedCacheType: CacheType) =>
-                val newCacheType = calculateCacheType(cacheType, receivedCacheType)
-                listen(pending, pendingToSend, newCacheType)
+                val newCacheType = calculateCacheType(state.cacheType, receivedCacheType)
+                listen(State(state.war, state.rec, state.pendingCarts, state.pendingJoinedCarts, newCacheType))
             case StopCachingWarehouse(newWarehouse) =>
-                warehouse = newWarehouse
-                pending.foreach(c => queueCart(ctx, c))
-                listen(pending, pendingToSend)
+                state.pendingCarts.foreach(c => queueCart(ctx, newWarehouse, c))
+                listen(State(newWarehouse, state.rec, state.pendingCarts, state.pendingJoinedCarts, state.cacheType))
             case StopCachingRecorder(newRecorder) =>
-                recorder = newRecorder
-
                 // Since recorder does not respond we don't know if carts were actually saved
                 // TODO: maybe confirmation from Recorder ?
-                pendingToSend.foreach(c => recorder ! Recorder.Data(c))
+                state.pendingJoinedCarts.foreach(c => state.rec ! Recorder.Data(c))
 
-                listen(pending, Set())
-            case _ => Behaviors.same
+                listen(State(state.war, state.rec, state.pendingCarts, state.pendingJoinedCarts, state.cacheType))
+            case _ =>
+                ctx.log.info(s"Unknown message ${message.toString()}")
+                Behaviors.same
         }
     }
 
@@ -100,12 +98,12 @@ private class Joiner(
         return Some(newCacheType);
     }
 
-    def queueCart(ctx: ActorContext[Message], cart: Cart): Unit  = {
+    def queueCart(ctx: ActorContext[Message], to: ActorRef[Warehouse.Message], cart: Cart): Unit  = {
         val self = ctx.messageAdapter[Warehouse.Receipt]{
             case Warehouse.Receipt(id, ps) => Products(id, ps)
         }
         ctx.log.info("Placing order")
-        warehouse ! Warehouse.Order(cart.id, cart.pids, self)
+        to ! Warehouse.Order(cart.id, cart.pids, self)
     }
 
     def sendCarts(

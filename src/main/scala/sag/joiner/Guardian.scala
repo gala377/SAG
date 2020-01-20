@@ -49,22 +49,6 @@ object Guardian extends actors.Guardian {
   ) {
     def isComplete: Boolean = rec.isDefined && war.isDefined
   }
-
-  // final case class CachingState(
-  //   joiner: ActorRef[Joiner.Message],
-  //   rec: Option[ActorRef[recorder.Recorder.Data]],
-  //   war: Option[ActorRef[warehouse.Warehouse.Message]],
-  // ) {
-  //   def isComplete: Boolean = rec.isDefined && war.isDefined
-
-  //   def unwrap: (ActorRef[Joiner.Message], ActorRef[recorder.Recorder.Data], ActorRef[warehouse.Warehouse.Message]) = 
-  //     if (isComplete) {
-  //       (joiner, rec.get, war.get)
-  //     } else {
-  //       throw new RuntimeException("Trying to unwrap incompleted state")
-  //     }
-  // }
-
 }
 
 private class Guardian {
