@@ -75,7 +75,7 @@ private class Joiner() {
                 // TODO: maybe confirmation from Recorder ?
                 state.pendingJoinedCarts.foreach(c => state.rec ! Recorder.Data(c))
 
-                listen(State(state.war, state.rec, state.pendingCarts, state.pendingJoinedCarts, state.cacheType))
+                listen(state.copy(pendingJoinedCarts=Set())
             case _ =>
                 ctx.log.info(s"Unknown message ${message.toString()}")
                 Behaviors.same
