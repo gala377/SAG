@@ -12,6 +12,7 @@ import sag.types._
 import sag.types.CacheType
 import sag.warehouse.Warehouse
 import sag.recorder.Recorder
+import scala.annotation.tailrec
 
 object Joiner {
     type Carts = Set[Cart]
@@ -52,12 +53,16 @@ private class Joiner() {
                 ctx.log.info(s"Got products $ps")
                 val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
                 val newPendingToSend = if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
-                    state.rec ! Recorder.Data(JoinedCart(cartId, ps))
+                    state.pendingCarts
+                        .find(_.id == cartId)
+                        .flatMap(joinCart(_, ps.toSet)) match {
+                            case Some(joinedCart) => state.rec ! Recorder.Data(joinedCart)
+                            case None => ctx.log.error(s"Couldn't complete matching cart $cartId")
+                    }
                     state.pendingJoinedCarts
                 } else {
                     state.pendingJoinedCarts + JoinedCart(cartId, ps)
-                }
-
+                }                
                 listen(state.copy(
                     pendingCarts=newPending, 
                     pendingJoinedCarts=newPendingToSend
@@ -103,4 +108,29 @@ private class Joiner() {
         to: ActorRef[ListCartsResponse],
         pending: Carts
     ): Unit = to ! ListCartsResponse(pending)
+
+    def joinCart(cart: Cart, products: Set[Product]): Option[JoinedCart] = {
+        @tailrec
+        def _joinCart(
+            ids: Seq[Product.Id], 
+            ps: Set[Product],
+            res: JoinedCart,
+        ): Option[JoinedCart] = {
+            ids match {
+                case x :: idsTail => {
+                    val p = ps.find(_.id == x) match {
+                        case Some(p) => p
+                        case None => return None;
+                    }
+                    _joinCart(
+                        idsTail,
+                        ps, 
+                        res.copy(products = res.products :+ p),
+                    )
+                }
+                case Nil => Some(res),
+            }
+        }
+        _joinCart(cart.pids, products, JoinedCart(cart.id, Seq()))
+    }
 }
