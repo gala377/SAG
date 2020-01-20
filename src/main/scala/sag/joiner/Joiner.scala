@@ -1,6 +1,6 @@
 package sag.joiner
 
-import scala.collection.immutable.{Map, Seq}
+import scala.collection.immutable.Seq
 
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{
@@ -14,8 +14,8 @@ import sag.warehouse.Warehouse
 import sag.recorder.Recorder
 
 object Joiner {
-    type Carts = Set[Cart];
-    type JoinedCarts = Set[JoinedCart];
+    type Carts = Set[Cart]
+    type JoinedCarts = Set[JoinedCart]
 
     final case class State(war: ActorRef[Warehouse.Message], rec: ActorRef[Recorder.Data], pendingCarts: Carts, 
                            pendingJoinedCarts: JoinedCarts, cacheType: Option[CacheType])
@@ -84,11 +84,11 @@ private class Joiner() {
     }
 
     def calculateCacheType(currentCacheType: Option[CacheType], newCacheType: CacheType): Option[CacheType] = {
-        if (currentCacheType.isEmpty) return Some(newCacheType);
-        if (currentCacheType.contains(CacheBoth)) return Some(CacheBoth);
+        if (currentCacheType.isEmpty) return Some(newCacheType)
+        if (currentCacheType.contains(CacheBoth)) return Some(CacheBoth)
         if (newCacheType == CacheRecorded && currentCacheType.contains(CacheWarehouse)) return Some(CacheBoth)
         if (newCacheType == CacheWarehouse && currentCacheType.contains(CacheRecorded)) return Some(CacheBoth)
-        return Some(newCacheType);
+        Some(newCacheType)
     }
 
     def queueCart(ctx: ActorContext[Message], to: ActorRef[Warehouse.Message], cart: Cart): Unit  = {
