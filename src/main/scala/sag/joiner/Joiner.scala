@@ -53,16 +53,11 @@ private class Joiner() {
                 ctx.log.info(s"Got products $ps")
                 val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
                 val newPendingToSend = if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
-                    state.pendingCarts.find(_.id == cartId) match {
-                        case Some(cart) => 
-                            joinCart(cart, ps.toSet) match {
-                                case None =>
-                                    ctx.log.error(s"Couldn't match all of the carts products. CartId $cartId")
-                                case Some(joinedCart) =>
-                                    state.rec ! Recorder.Data(joinedCart)
-                            }
-                        case None =>
-                            ctx.log.error(s"Couldn't find cart with id $cartId")
+                    state.pendingCarts
+                        .find(_.id == cartId)
+                        .flatMap(joinCart(_, ps.toSet)) match {
+                            case Some(joinedCart) => state.rec ! Recorder.Data(joinedCart)
+                            case None => ctx.log.error(s"Couldn't complete matching cart $cartId")
                     }
                     state.pendingJoinedCarts
                 } else {
