@@ -51,12 +51,13 @@ private class Joiner() {
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
                 val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
-                var newPendingToSend = state.pendingJoinedCarts
-                if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
+                val newPendingToSend = if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
                     state.rec ! Recorder.Data(JoinedCart(cartId, ps))
+                    state.pendingJoinedCarts
                 } else {
-                    newPendingToSend = newPendingToSend + JoinedCart(cartId, ps)
-                }                
+                    state.pendingJoinedCarts + JoinedCart(cartId, ps)
+                }
+
                 listen(state.copy(
                     pendingCarts=newPending, 
                     pendingJoinedCarts=newPendingToSend
