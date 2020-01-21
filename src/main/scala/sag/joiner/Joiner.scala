@@ -84,7 +84,7 @@ private class Joiner() {
                                 case None => ctx.log.error(s"Couldn't complete matching cart $cartId")
                         }
                         state.pendingJoinedCarts
-                    case default => state.pendingJoinedCarts + JoinedCart(cartId, ps)
+                    case _ => state.pendingJoinedCarts + JoinedCart(cartId, ps)
                 }               
                 listen(state.copy(
                     pendingCarts=newPending, 
