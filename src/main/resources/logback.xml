@@ -2,6 +2,7 @@
     <!-- This is a development logging configuration that logs to standard out, for an example of a production
         logging config, see the Akka docs: https://doc.akka.io/docs/akka/2.6/typed/logging.html#logback -->
     <appender name="STDOUT" target="System.out" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="filters.SagFilter" />
         <encoder>
             <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
         </encoder>
@@ -17,4 +18,14 @@
         <appender-ref ref="ASYNC"/>
     </root>
 
+    <appender name="ALL" class="ch.qos.logback.core.FileAppender">
+        <file>log/all.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>[%date{ISO8601}] [%level] [%logger] [%thread] [%X{akkaSource}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="ALL" />
+    </root>
 </configuration>
