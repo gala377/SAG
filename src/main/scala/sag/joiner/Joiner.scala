@@ -6,12 +6,14 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{
   Behaviors, 
   ActorContext,
+  TimerScheduler,
 }
 
 import sag.types._
 import sag.warehouse.Warehouse
 import sag.recorder.Recorder
 import scala.annotation.tailrec
+import scala.concurrent.duration.FiniteDuration
 
 object Joiner {
     type Carts = Set[Cart]
@@ -30,11 +32,13 @@ object Joiner {
         rec: Option[ActorRef[Recorder.Data]],
         pendingCarts: Carts, 
         pendingJoinedCarts: JoinedCarts,
-        cacheType: Option[CacheType])
+        cacheType: Option[CacheType],
+    )
 
     sealed trait Message
     final case class Data(content: Cart) extends Message with CborSerializable
     final case class Products(id: Cart.Id, ps: Seq[Product]) extends Message with CborSerializable
+    final case class OrderTimeout(id: Cart.Id) extends Message with CborSerializable
     
     final case class ListCarts(sendTo: ActorRef[ListCartsResponse]) extends Message with CborSerializable
     final case class ListCartsResponse(content: Carts) extends Message with CborSerializable
@@ -45,35 +49,44 @@ object Joiner {
 
     def apply(
         warehouse: ActorRef[Warehouse.Message],
-        recorder: ActorRef[Recorder.Data]
-    ): Behavior[Message] = 
-        new Joiner().listen(
-            State(
-                Some(warehouse),
-                Some(recorder),
-                Set(),
-                Set(),
-                None
+        recorder: ActorRef[Recorder.Data],
+        timeout: FiniteDuration,
+    ): Behavior[Message] = Behaviors.setup { ctx =>
+        Behaviors.withTimers { timer =>
+            new Joiner(timer, timeout).listen(
+                State(
+                    Some(warehouse),
+                    Some(recorder),
+                    Set(),
+                    Set(),
+                    None,
+                )
             )
-        )
+        }
+    }
 }
 
-private class Joiner() {
+private class Joiner(
+    timer: TimerScheduler[Joiner.Message],
+    timeout: FiniteDuration,
+) {
     import Joiner._
 
     def listen(state: State): Behavior[Message] =
         Behaviors.receive { (ctx, message) => message match {
             case Data(cart) =>
                 ctx.log.info(s"Got new cart $cart")
+                timer.startSingleTimer(cart.id, OrderTimeout(cart.id), timeout)
                 state.cacheType match {
                     case None | Some(CacheRecorder) =>
                         queueCart(ctx, state.war.get, cart)
-                    case _=>
+                    case _ =>
                 }        
                 val newPending = state.pendingCarts + cart
                 listen(state.copy(pendingCarts=newPending))
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
+                timer.cancel(cartId)
                 val newPending = state.pendingCarts.filter(_.id != cartId)
                 val newPendingToSend = state.cacheType match {
                     case None | Some(CacheWarehouse) => 
@@ -119,6 +132,10 @@ private class Joiner() {
                     pendingJoinedCarts=Set(),
                     cacheType=newCacheType,
                 ))
+            case OrderTimeout(cartId) =>
+                ctx.log.info(s"Timeout on cart $cartId. Droping cart...")
+                val newPending = state.pendingCarts.filter(_.id != cartId)
+                listen(state.copy(pendingCarts=newPending))
             case _ =>
                 ctx.log.info(s"Unknown message ${message.toString()}")
                 Behaviors.same
@@ -153,10 +170,10 @@ private class Joiner() {
     }
 
     def queueCart(ctx: ActorContext[Message], to: ActorRef[Warehouse.Message], cart: Cart): Unit  = {
+        ctx.log.info("Placing order")
         val self = ctx.messageAdapter[Warehouse.Receipt]{
             case Warehouse.Receipt(id, ps) => Products(id, ps)
         }
-        ctx.log.info("Placing order")
         to ! Warehouse.Order(cart.id, cart.pids, self)
     }
 
