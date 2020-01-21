@@ -6,13 +6,19 @@ import akka.actor.typed.Behavior
 import akka.actor.typed.receptionist.Receptionist
 import akka.actor.typed.receptionist
 import akka.actor.typed.scaladsl.Behaviors
-import sag.actors
-import sag.warehouse
-import sag.recorder
-import sag.joiner.Joiner.StartCaching
-import sag.types.{CacheWarehouse, CacheRecorded}
-import sag.joiner.Joiner.StopCachingWarehouse
-import sag.joiner.Joiner.StopCachingRecorder
+import sag.{
+  actors,
+  warehouse,
+  recorder,
+}
+import sag.joiner.Joiner.{
+  StartCaching,
+  StopCachingWarehouse,
+  StopCachingRecorder,
+  CacheRecorder,
+  CacheWarehouse,
+}
+
 
 object Guardian extends actors.Guardian {
 
@@ -157,7 +163,7 @@ private class Guardian {
   ): Behavior[Receptionist.Listing] = { 
     if (state.rec.isDefined && addresses.contains(state.rec.get) == false) {
       ctx.log.warn("Recorder left the cluster. Changing into caching mode")
-      state.joiner ! StartCaching(CacheRecorded)
+      state.joiner ! StartCaching(CacheRecorder)
 
       return monitorDependantActors(WorkingState(state.joiner, None, state.war))
     }

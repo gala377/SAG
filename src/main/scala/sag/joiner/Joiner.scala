@@ -9,7 +9,6 @@ import akka.actor.typed.scaladsl.{
 }
 
 import sag.types._
-import sag.types.CacheType
 import sag.warehouse.Warehouse
 import sag.recorder.Recorder
 import scala.annotation.tailrec
@@ -18,8 +17,20 @@ object Joiner {
     type Carts = Set[Cart]
     type JoinedCarts = Set[JoinedCart]
 
-    final case class State(war: ActorRef[Warehouse.Message], rec: ActorRef[Recorder.Data], pendingCarts: Carts, 
-                           pendingJoinedCarts: JoinedCarts, cacheType: Option[CacheType])
+    sealed trait CacheType
+    // Cache data meant to be send to warehouse
+    case object CacheWarehouse extends CacheType
+    // Cache data meant to be send to recorder
+    case object CacheRecorder extends CacheType
+    // Cache both types of data 
+    case object CacheBoth extends CacheType
+
+    final case class State(
+        war: Option[ActorRef[Warehouse.Message]], 
+        rec: Option[ActorRef[Recorder.Data]],
+        pendingCarts: Carts, 
+        pendingJoinedCarts: JoinedCarts,
+        cacheType: Option[CacheType])
 
     sealed trait Message
     final case class Data(content: Cart) extends Message with CborSerializable
@@ -36,7 +47,15 @@ object Joiner {
         warehouse: ActorRef[Warehouse.Message],
         recorder: ActorRef[Recorder.Data]
     ): Behavior[Message] = 
-        new Joiner().listen(State(warehouse, recorder, Set(), Set(), None))
+        new Joiner().listen(
+            State(
+                Some(warehouse),
+                Some(recorder),
+                Set(),
+                Set(),
+                None
+            )
+        )
 }
 
 private class Joiner() {
@@ -46,23 +65,27 @@ private class Joiner() {
         Behaviors.receive { (ctx, message) => message match {
             case Data(cart) =>
                 ctx.log.info(s"Got new cart $cart")
-                if (state.cacheType.isEmpty || state.cacheType.get == CacheRecorded) queueCart(ctx, state.war, cart)
+                state.cacheType match {
+                    case None | Some(CacheRecorder) =>
+                        queueCart(ctx, state.war.get, cart)
+                    case _=>
+                }        
                 val newPending = state.pendingCarts + cart
                 listen(state.copy(pendingCarts=newPending))
             case Products(cartId, ps) =>
                 ctx.log.info(s"Got products $ps")
-                val newPending = state.pendingCarts.filter(!_.id.equals(cartId))
-                val newPendingToSend = if (state.cacheType.isEmpty || state.cacheType.get == CacheWarehouse) {
-                    state.pendingCarts
-                        .find(_.id == cartId)
-                        .flatMap(joinCart(_, ps.toSet)) match {
-                            case Some(joinedCart) => state.rec ! Recorder.Data(joinedCart)
-                            case None => ctx.log.error(s"Couldn't complete matching cart $cartId")
-                    }
-                    state.pendingJoinedCarts
-                } else {
-                    state.pendingJoinedCarts + JoinedCart(cartId, ps)
-                }                
+                val newPending = state.pendingCarts.filter(_.id != cartId)
+                val newPendingToSend = state.cacheType match {
+                    case None | Some(CacheWarehouse) => 
+                        state.pendingCarts
+                            .find(_.id == cartId)
+                            .flatMap(joinCart(_, ps.toSet)) match {
+                                case Some(joinedCart) => state.rec.get ! Recorder.Data(joinedCart)
+                                case None => ctx.log.error(s"Couldn't complete matching cart $cartId")
+                        }
+                        state.pendingJoinedCarts
+                    case default => state.pendingJoinedCarts + JoinedCart(cartId, ps)
+                }               
                 listen(state.copy(
                     pendingCarts=newPending, 
                     pendingJoinedCarts=newPendingToSend
@@ -71,29 +94,62 @@ private class Joiner() {
                 sendCarts(sendTo, state.pendingCarts)
                 Behaviors.same
             case StartCaching(receivedCacheType: CacheType) =>
-                val newCacheType = calculateCacheType(state.cacheType, receivedCacheType)
-                listen(state.copy(cacheType=newCacheType))
+                val newCacheType = increamentCacheType(state.cacheType, receivedCacheType)
+                newCacheType match {
+                    case Some(CacheRecorder) => 
+                        listen(state.copy(rec=None, cacheType=newCacheType))
+                    case Some(CacheWarehouse) =>
+                        listen(state.copy(war=None, cacheType=newCacheType))
+                    case Some(CacheBoth) =>
+                        listen(state.copy(rec=None, war=None, cacheType=newCacheType))
+                    case _ => Behaviors.same
+                    // ^ this one should never happen 
+                }
             case StopCachingWarehouse(newWarehouse) =>
                 state.pendingCarts.foreach(c => queueCart(ctx, newWarehouse, c))
-                listen(state.copy(war=newWarehouse))
+                val newCacheType = decreamentCacheType(state.cacheType, CacheWarehouse)
+                listen(state.copy(war=Some(newWarehouse), cacheType=newCacheType))
             case StopCachingRecorder(newRecorder) =>
                 // Since recorder does not respond we don't know if carts were actually saved
                 // TODO: maybe confirmation from Recorder ?
-                state.pendingJoinedCarts.foreach(c => state.rec ! Recorder.Data(c))
-
-                listen(state.copy(pendingJoinedCarts=Set()))
+                state.pendingJoinedCarts.foreach(c => newRecorder ! Recorder.Data(c))
+                val newCacheType = decreamentCacheType(state.cacheType, CacheRecorder)
+                listen(state.copy(
+                    rec=Some(newRecorder),
+                    pendingJoinedCarts=Set(),
+                    cacheType=newCacheType,
+                ))
             case _ =>
                 ctx.log.info(s"Unknown message ${message.toString()}")
                 Behaviors.same
         }
     }
 
-    def calculateCacheType(currentCacheType: Option[CacheType], newCacheType: CacheType): Option[CacheType] = {
-        if (currentCacheType.isEmpty) return Some(newCacheType)
-        if (currentCacheType.contains(CacheBoth)) return Some(CacheBoth)
-        if (newCacheType == CacheRecorded && currentCacheType.contains(CacheWarehouse)) return Some(CacheBoth)
-        if (newCacheType == CacheWarehouse && currentCacheType.contains(CacheRecorded)) return Some(CacheBoth)
-        Some(newCacheType)
+    def increamentCacheType(
+        currCacheType: Option[CacheType],
+        otherCacheType: CacheType 
+    ): Option[CacheType] = currCacheType match {
+        case Some(CacheBoth) => Some(CacheBoth)
+        case Some(CacheWarehouse) if otherCacheType == CacheRecorder => 
+            Some(CacheBoth)
+        case Some(CacheRecorder) if otherCacheType == CacheWarehouse => 
+            Some(CacheBoth)
+        case _ => Some(otherCacheType),
+    }
+
+    def decreamentCacheType(
+        currCacheType: Option[CacheType],
+        otherCacheType: CacheType 
+    ): Option[CacheType] = currCacheType match {
+        case Some(CacheBoth) if otherCacheType == CacheWarehouse =>
+            Some(CacheRecorder)
+        case Some(CacheBoth) if otherCacheType == CacheRecorder =>
+            Some(CacheWarehouse)
+        case Some(CacheWarehouse) if otherCacheType == CacheWarehouse => 
+            None
+        case Some(CacheRecorder) if otherCacheType == CacheRecorder => 
+            None
+        case _ => None,
     }
 
     def queueCart(ctx: ActorContext[Message], to: ActorRef[Warehouse.Message], cart: Cart): Unit  = {
