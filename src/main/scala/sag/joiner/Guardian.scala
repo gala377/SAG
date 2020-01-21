@@ -18,9 +18,12 @@ import sag.joiner.Joiner.{
   CacheRecorder,
   CacheWarehouse,
 }
-
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.FiniteDuration
 
 object Guardian extends actors.Guardian {
+
+  val ORDER_TIMEOUT_IN_SECONDS = 5
 
   val ServiceKey: receptionist.ServiceKey[Joiner.Message] =
     receptionist.ServiceKey("Joiner")
@@ -111,7 +114,13 @@ private class Guardian {
     if (state.isComplete) {
       ctx.log.info("Recorder and warehouse are present. Spawning joiner")
       val (rec, war) = state.unwrap
-      val joiner = ctx.spawnAnonymous(Joiner(war, rec))
+      val joiner = ctx.spawnAnonymous(Joiner(
+        war,
+        rec, 
+        new FiniteDuration(
+          ORDER_TIMEOUT_IN_SECONDS,
+          TimeUnit.SECONDS)
+      ))
       ctx.system.receptionist ! Receptionist.Register(
         ServiceKey, joiner)
       monitorDependantActors(WorkingState(joiner, Some(rec), Some(war)))

@@ -29,7 +29,6 @@ object Collector {
                 new Collector(timer, timeout).collectAndSend(0, sendTo)
             }
         }
-
     val maxNumOfProducts = 10
 }
 
