@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior}
 import sag.joiner
 import sag.joiner.Joiner
-import sag.types._
+import sag.payload._
 
 object Collector {
 

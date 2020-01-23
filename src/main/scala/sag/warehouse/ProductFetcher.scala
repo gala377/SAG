@@ -9,8 +9,8 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpRequest
 import akka.http.scaladsl.unmarshalling.Unmarshal
 
-import sag.types.{Product, CborSerializable}
-import sag.types.JsonSupport._
+import sag.payload.{Product, CborSerializable}
+import sag.payload.JsonSupport._
 
 
 object ProductFetcher {

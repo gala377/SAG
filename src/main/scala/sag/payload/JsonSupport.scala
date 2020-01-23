@@ -1,4 +1,4 @@
-package sag.types
+package sag.payload
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import spray.json.DefaultJsonProtocol

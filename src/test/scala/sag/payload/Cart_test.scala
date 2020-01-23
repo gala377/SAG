@@ -1,4 +1,4 @@
-package sag.types
+package sag.payload
 
 import org.scalatest._
 

@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
-import sag.types.{CborSerializable, JoinedCart}
+import sag.payload.{CborSerializable, JoinedCart}
 
 import scala.concurrent.duration.FiniteDuration
 

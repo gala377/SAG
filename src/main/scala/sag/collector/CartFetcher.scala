@@ -8,8 +8,8 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import akka.http.scaladsl.unmarshalling._
 import sag.collector.Collector.CartIsReady
-import sag.types.JsonSupport._
-import sag.types._
+import sag.payload.JsonSupport._
+import sag.payload._
 
 object CartFetcher {
     sealed trait Message
