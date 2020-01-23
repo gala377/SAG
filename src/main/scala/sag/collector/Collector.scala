@@ -1,20 +1,19 @@
 package sag.collector
 
+import scala.concurrent.duration.FiniteDuration
 import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 import akka.actor.typed.{ActorRef, Behavior}
 import sag.joiner
 import sag.joiner.Joiner
 import sag.types._
 
-import scala.annotation.tailrec
-import scala.concurrent.duration.FiniteDuration
-import scala.util.Random
-
 object Collector {
 
     sealed trait Command
 
     final case class DownloadNext() extends Command with CborSerializable
+
+    final case class CartIsReady(cart: Cart) extends Command with CborSerializable
 
     final case class StartCaching() extends Command with CborSerializable
 
@@ -26,34 +25,34 @@ object Collector {
         Behaviors.setup { ctx =>
             Behaviors.withTimers { timer =>
                 ctx.self ! DownloadNext()
-                new Collector(Random.nextInt(100000), timer, timeout).collectAndSend(0, sendTo)
+                new Collector(timer, timeout).collectAndSend(sendTo)
             }
         }
-    val maxNumOfProducts = 10
 }
 
-private class Collector(id_prefix: Int, timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
-
+private class Collector(timer: TimerScheduler[Collector.Command], timeout: FiniteDuration) {
     import Collector._
 
-    def collectAndSend(id: Int, joinerRef: ActorRef[joiner.Joiner.Message]): Behavior[Command] =
+    def collectAndSend(joinerRef: ActorRef[joiner.Joiner.Message]): Behavior[Command] =
         Behaviors.receive { (ctx, message) =>
             message match {
                 case StartCaching() =>
                     ctx.log.info(s"Caching messages started")
-                    collectAndCache(id, Set())
+                    collectAndCache(Set())
                 case StartSending(sentTo) =>
-                    collectAndSend(id, sentTo)
+                    collectAndSend(sentTo)
                 case DownloadNext() =>
-                    val cart = randomCart(id_prefix + "_" + id)
-                    ctx.log.info(s"Sending cart $cart")
+                    ctx.spawnAnonymous(CartFetcher(ctx.self))
+                    collectAndSend(joinerRef)
+                case CartIsReady(cart) =>
+                    ctx.log.info(s"Sending cart $cart to joiner")
                     joinerRef ! Joiner.Data(cart)
                     timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
-                    collectAndSend(id + 1, joinerRef)
+                    collectAndSend(joinerRef)
             }
         }
 
-    def collectAndCache(id: Int, msgSet: Set[Cart]): Behavior[Command] =
+    def collectAndCache(msgSet: Set[Cart]): Behavior[Command] =
         Behaviors.receive { (ctx, message) =>
             message match {
                 case StartCaching() =>
@@ -63,29 +62,15 @@ private class Collector(id_prefix: Int, timer: TimerScheduler[Collector.Command]
                         ctx.log.info(s"Sending cached cart $cart")
                         sentTo ! Joiner.Data(cart)
                     })
-                    collectAndSend(id, sentTo)
+                    collectAndSend(sentTo)
                 case DownloadNext() =>
-                    val cart = randomCart(id_prefix + "_" + id)
-                    ctx.log.info(s"Caching cart $cart")
+                    ctx.spawnAnonymous(CartFetcher(ctx.self))
+                    collectAndCache(msgSet)
+                case CartIsReady(cart) =>
+                    ctx.log.info(s"Adding cart $cart to cache")
                     timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
-                    collectAndCache(id + 1, msgSet + cart)
+                    collectAndCache(msgSet + cart)
             }
         }
-
-
-    def randomCart(id: String): Cart = {
-        @tailrec
-        def addProducts(cart: Cart, productsNum: Int): Cart =
-            if (productsNum == 0)
-                cart
-            else
-                addProducts(Cart(cart.id, cart.pids :+ randomProductId), productsNum - 1)
-
-        val numOfProducts = Random.nextInt(maxNumOfProducts)
-        addProducts(Cart(id, Seq()), numOfProducts)
-    }
-
-    def randomProductId: Product.Id =
-        Random.nextInt(Products.products.length)
 }
 

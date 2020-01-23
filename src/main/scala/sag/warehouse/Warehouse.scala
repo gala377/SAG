@@ -35,8 +35,8 @@ object Warehouse {
     {
         import OrderInfo._
 
-        def addProduct(id: Product.Id, p: Product): OrderState = {
-            val newInfo = products + (id -> Some(p))
+        def addProduct(p: Product): OrderState = {
+            val newInfo = products + (p.stockCode -> Some(p))
             if (newInfo.exists{case (_, opt) => opt.isEmpty}) {
                 Incompleted(OrderInfo(sender, newInfo))
             } else {
@@ -58,7 +58,7 @@ object Warehouse {
         id: String,
         ps: Seq[Product]
     ) extends Message with CborSerializable
-    private[warehouse] final case class ProductFetched(
+    final case class ProductFetched(
         id: Order.Id,
         product: Product
     ) extends Message with CborSerializable
@@ -82,12 +82,13 @@ private class Warehouse {
             case ProductFetched(id, product) =>
                 ctx.log.info(s"Fetched product $product for order $id")
                 val order = orders.get(id) match {
-                    case None => return Behaviors.same;
+                    case None => return Behaviors.same; // TODO: Can't have return here
                     case Some(order) => order
                 }
-                order.addProduct(product.id, product) match {
+                order.addProduct(product) match {
                     case OrderInfo.Incompleted(order) =>
                         ctx.log.info(s"Order $id still incompleted")
+                        ctx.log.info(s"Order state $order")
                         listen(orders + (id -> order))
                     case OrderInfo.Completed(order) =>
                         ctx.log.info(s"Order $id completed")
@@ -112,20 +113,5 @@ private class Warehouse {
             ctx.log.info(s"Spawning fetcher for order: $id, product: $pid")
             ctx.spawnAnonymous(ProductFetcher(id, pid, ctx.self))
         }
-    }
-}
-
-private object ProductFetcher {
-
-    def apply(
-        oid: Warehouse.Order.Id,
-        pid: Product.Id,
-        sendTo: ActorRef[Warehouse.ProductFetched]
-    ): Behavior[AnyRef] = Behaviors.setup { ctx =>
-        ctx.log.info(s"Product fetcher spawned for order $oid product $pid")
-        val product = Products.products(pid)
-        ctx.log.info(s"Got product $product. Sending to parent")
-        sendTo ! Warehouse.ProductFetched(oid, product)
-        Behaviors.stopped
     }
 }

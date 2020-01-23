@@ -9,9 +9,9 @@ import akka.actor.typed.scaladsl.{
   TimerScheduler,
 }
 
-import sag.types._
 import sag.warehouse.Warehouse
 import sag.recorder.Recorder
+import sag.types._
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 
@@ -191,7 +191,7 @@ private class Joiner(
         ): Option[JoinedCart] = {
             ids match {
                 case x :: idsTail => {
-                    val p = ps.find(_.id == x) match {
+                    val p = ps.find(_.stockCode == x) match {
                         case Some(p) => p
                         case None => return None;
                     }

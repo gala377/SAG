@@ -12,7 +12,7 @@ import scala.concurrent.duration.FiniteDuration
 
 object Guardian extends actors.Guardian {
     val ServiceKey: receptionist.ServiceKey[Collector.Command] = receptionist.ServiceKey[Collector.Command]("Collector")
-    val COLLECTOR_TIMEOUT_IN_SEC = 1
+    val COLLECTOR_TIMEOUT_IN_SEC = 5
 
     def apply(args: Array[String]): Behavior[Receptionist.Listing] =
         Behaviors.setup { ctx =>

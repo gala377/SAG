@@ -45,7 +45,7 @@ object Recorder {
     def cartRepr(cart: JoinedCart): String = {
         var repr = s"\tCart's id: ${cart.id}\n"
         for (p <- cart.products) {
-            repr += s"\t\tProduct[${p.id}]: ${p.description}\n"
+            repr += s"\t\tProduct[${p.stockCode}]: ${p.description}\n"
         }
         repr
     }

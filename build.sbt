@@ -2,6 +2,7 @@ import com.typesafe.sbt.SbtMultiJvm.multiJvmSettings
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 
 lazy val akkaVersion = "2.6.1"
+lazy val akkaHttpVersion = "10.1.11"
 
 lazy val root = (project in file("."))
   .settings(multiJvmSettings: _*)
@@ -16,7 +17,10 @@ lazy val root = (project in file("."))
       "org.scalatest" %% "scalatest" % "3.0.8" % Test,
       "com.typesafe.akka" %% "akka-cluster-typed"         % akkaVersion,
       "com.typesafe.akka" %% "akka-serialization-jackson" % akkaVersion,
-      "com.typesafe.akka" %% "akka-multi-node-testkit"    % akkaVersion % Test),
+      "com.typesafe.akka" %% "akka-multi-node-testkit"    % akkaVersion % Test,
+      "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
+      "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
+      "com.typesafe.akka" %% "akka-stream" % akkaVersion ),
     run / javaOptions ++= Seq("-Xms128m", "-Xmx1024m", "-Djava.library.path=./target/native"),
   )
   .configs(MultiJvm)
