@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import akka.actor.typed.receptionist.Receptionist
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior, receptionist}
+import com.typesafe.config.Config
 import sag.collector.Collector.{StartCaching, StartSending}
 import sag.{actors, joiner}
 
@@ -14,7 +15,7 @@ object Guardian extends actors.Guardian {
     val ServiceKey: receptionist.ServiceKey[Collector.Command] = receptionist.ServiceKey[Collector.Command]("Collector")
     val COLLECTOR_TIMEOUT_IN_SEC = 5
 
-    def apply(args: Array[String]): Behavior[Receptionist.Listing] =
+    def apply(args: Array[String], config: Config): Behavior[Receptionist.Listing] =
         Behaviors.setup { ctx =>
             ctx.system.receptionist ! Receptionist.Subscribe(joiner.Guardian.ServiceKey, ctx.self)
             new Guardian().spawnCollector()

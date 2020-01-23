@@ -6,19 +6,10 @@ import akka.actor.typed.Behavior
 import akka.actor.typed.receptionist.Receptionist
 import akka.actor.typed.receptionist
 import akka.actor.typed.scaladsl.Behaviors
-import sag.{
-  actors,
-  warehouse,
-  recorder,
-}
-import sag.joiner.Joiner.{
-  StartCaching,
-  StopCachingWarehouse,
-  StopCachingRecorder,
-  CacheRecorder,
-  CacheWarehouse,
-}
+import sag.{actors, recorder, warehouse}
+import sag.joiner.Joiner.{CacheRecorder, CacheWarehouse, StartCaching, StopCachingRecorder, StopCachingWarehouse}
 import java.util.concurrent.TimeUnit
+import com.typesafe.config.Config
 import scala.concurrent.duration.FiniteDuration
 
 object Guardian extends actors.Guardian {
@@ -28,7 +19,7 @@ object Guardian extends actors.Guardian {
   val ServiceKey: receptionist.ServiceKey[Joiner.Message] =
     receptionist.ServiceKey("Joiner")
 
-  def apply(args: Array[String]): Behavior[Receptionist.Listing] =
+  def apply(args: Array[String], config: Config): Behavior[Receptionist.Listing] =
     Behaviors.setup { ctx =>
       ctx.system.receptionist ! Receptionist.Subscribe(
         warehouse.Guardian.ServiceKey, ctx.self)
