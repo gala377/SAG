@@ -1,61 +1,57 @@
 package sag.warehouse
 
-import scala.util.{Failure, Success, Try}
-import akka.actor.typed.{ActorRef, Behavior}
+import scala.concurrent.ExecutionContextExecutor
+import scala.util.{Failure, Success}
+
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
-import akka.http.scaladsl.unmarshalling._
-import sag.warehouse.Warehouse.ProductFetched
+import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.unmarshalling.Unmarshal
+
+import sag.types.{Product, CborSerializable}
 import sag.types.JsonSupport._
-import sag.types._
+
 
 object ProductFetcher {
-    sealed trait Command
-    final case class Download() extends Command with CborSerializable
-    final case class Parse(data: Try[HttpResponse]) extends Command with CborSerializable
-    final case class SendToWarehouse(product: Product) extends Command with CborSerializable
+    sealed trait Message
+    final case class ProductFetched(product: Product) extends Message with CborSerializable
+    final case class FetchingFailure(error: String) extends  Message with CborSerializable
 
-    def apply(id: String, stockCode: String, warehouse: ActorRef[Warehouse.Message]) : Behavior[Command] =
+    def apply(id: String, stockCode: String, warehouse: ActorRef[Warehouse.Message]) : Behavior[Message] =
         Behaviors.setup { ctx =>
-            ctx.self ! Download()
-            new ProductFetcher().listen(id, stockCode, warehouse)
-        }    
+            new ProductFetcher(id, stockCode, warehouse)
+              .download(ctx)
+        }
 }
 
-private class ProductFetcher() {
+private class ProductFetcher(
+    id: String,
+    stockCode: String,
+    warehouse: ActorRef[Warehouse.Message]
+) {
     import ProductFetcher._
 
-    def listen(id: String, stockCode: String, warehouse: ActorRef[Warehouse.Message]): Behavior[Command] = 
-        Behaviors.receive { (ctx: ActorContext[Command], message: Command) => 
-            message match {
-                case Download() =>
-                    val http = Http(ctx.system)
-                    val endpoint = s"https://nameless-citadel-79852.herokuapp.com/products/$stockCode"
-
-                    ctx.pipeToSelf(http.singleRequest(HttpRequest(uri = endpoint)))((data) => Parse(data))
-                case Parse(data) =>
-                    data match {
-                        case Success(resp) =>
-                            implicit val system = ctx.system
-                            ctx.pipeToSelf(Unmarshal(resp.entity).to[Product])(sendFurtherOrRaise)
-                        case Failure(exception) => 
-                            ctx.log.info(s"Exception occured when downloading product: $exception")
-                            Behaviors.stopped
-                    }
-                case SendToWarehouse(product) =>
-                    warehouse ! ProductFetched(id, product)
-                    Behaviors.stopped
-            }
-            Behaviors.same
+    def download(ctx: ActorContext[Message]): Behavior[Message] = {
+        val endpoint = s"https://nameless-citadel-79852.herokuapp.com/products/$stockCode"
+        implicit val ec: ExecutionContextExecutor = ctx.system.executionContext
+        implicit val system: ActorSystem[Nothing] = ctx.system
+        val req = Http(ctx.system)
+          .singleRequest(HttpRequest(uri = endpoint))
+          .flatMap(resp => Unmarshal(resp.entity).to[Product])
+        ctx.pipeToSelf(req) {
+            case Success(p) => ProductFetched(p)
+            case Failure(e) => FetchingFailure(e.toString)
         }
-        
+        listen()
+    }
 
-    def sendFurtherOrRaise(data: Try[Product]): Command = {
-        data match {
-            case Success(product) => SendToWarehouse(product)
-            case Failure(exception) => 
-                throw new RuntimeException(s"Error while parsing product: $exception")
-        }
+    def listen(): Behavior[Message] = Behaviors.receiveMessage {
+            case ProductFetched(p) =>
+                warehouse ! Warehouse.ProductFetched(id, p)
+                Behaviors.stopped
+            case FetchingFailure(_) =>
+                // TODO: Send info to warehouse that the fetching failed
+                Behaviors.stopped
     }
 }
