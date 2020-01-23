@@ -17,6 +17,7 @@ import sag.types._
 object Warehouse {
 
     private[warehouse] type Orders = Map[Order.Id, OrderInfo]
+    
     private[warehouse] object OrderInfo {
 
         sealed trait OrderState
@@ -29,6 +30,7 @@ object Warehouse {
                 ps.map{_ -> None}.toMap)
         }
     }
+
     final private[warehouse] case class OrderInfo(
         sender: ActorRef[Receipt],
         products: Map[Product.Id, Option[Product]])
@@ -81,24 +83,20 @@ private class Warehouse {
             }
             case ProductFetched(id, product) =>
                 ctx.log.info(s"Fetched product $product for order $id")
-                val order = orders.get(id) match {
-                    case None => return Behaviors.same; // TODO: Can't have return here
-                    case Some(order) => order
-                }
-                order.addProduct(product) match {
-                    case OrderInfo.Incompleted(order) =>
+                orders.get(id).flatMap(x => Some(x.addProduct(product))) match {
+                    case None => Behaviors.same
+                    case Some(OrderInfo.Incompleted(order)) =>
                         ctx.log.info(s"Order $id still incompleted")
                         ctx.log.info(s"Order state $order")
                         listen(orders + (id -> order))
-                    case OrderInfo.Completed(order) =>
+                    case Some(OrderInfo.Completed(order)) =>
                         ctx.log.info(s"Order $id completed")
-                        val newOrders = orders - id
                         order.sender ! Receipt(
                             id,
                             order.products
-                              .flatMap { case (_, p) => p }
-                              .toSeq)
-                        listen(newOrders)
+                            .flatMap { case (_, p) => p }
+                            .toSeq)
+                        listen(orders - id)
                 }
             case _ => Behaviors.same
         }
