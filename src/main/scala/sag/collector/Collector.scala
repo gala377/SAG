@@ -10,13 +10,9 @@ import sag.types._
 object Collector {
 
     sealed trait Command
-
     final case class DownloadNext() extends Command with CborSerializable
-
     final case class CartIsReady(cart: Cart) extends Command with CborSerializable
-
     final case class StartCaching() extends Command with CborSerializable
-
     final case class StartSending(sentTo: ActorRef[Joiner.Message]) extends Command with CborSerializable
 
     case object TimerKey

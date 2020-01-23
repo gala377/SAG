@@ -1,9 +1,9 @@
 package sag.collector
 
-import scala.concurrent.Future
-import scala.util.{Try, Success, Failure}
-import akka.actor.typed.{ActorRef, Behavior}
-import akka.actor.typed.scaladsl.{Behaviors, ActorContext}
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.util.{Failure, Success, Try}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import akka.http.scaladsl.unmarshalling._
@@ -12,52 +12,40 @@ import sag.types.JsonSupport._
 import sag.types._
 
 object CartFetcher {
-    sealed trait Command
+    sealed trait Message
+    final case class CartFetched(cart: Cart) extends Message with CborSerializable
+    final case class FetchingFailure(error: String) extends Message with CborSerializable
 
-    final case class Download() extends Command with CborSerializable
-    final case class Parse(data: Try[HttpResponse]) extends Command with CborSerializable
-    final case class SendToCollector(cart: Cart) extends Command with CborSerializable
-
-    def apply(collector: ActorRef[Collector.Command]) : Behavior[Command] =
+    def apply(collector: ActorRef[Collector.Command]) : Behavior[Message] =
         Behaviors.setup { ctx =>
-            ctx.self ! Download()
-            new CartFetcher().listen(collector)
+            new CartFetcher(collector).download(ctx)
         }    
 }
 
-private class CartFetcher() {
+private class CartFetcher(sendTo: ActorRef[Collector.Command]) {
     import CartFetcher._
 
-    def listen(collector: ActorRef[Collector.Command]): Behavior[Command] = 
-        Behaviors.receive { (ctx: ActorContext[Command], message: Command) => 
-            message match {
-                case Download() =>
-                    val http = Http(ctx.system)
-                    val endpoint = "https://young-crag-34985.herokuapp.com/cart"
-
-                    ctx.pipeToSelf(http.singleRequest(HttpRequest(uri = endpoint)))((data) => Parse(data))
-                case Parse(data) =>
-                    data match {
-                        case Success(resp) =>
-                            implicit val system = ctx.system
-                            ctx.pipeToSelf(Unmarshal(resp.entity).to[Cart])(sendFurtherOrRaise)
-                        case Failure(exception) => 
-                            ctx.log.info(s"Exception occured when downloading cart: $exception")
-                            Behaviors.stopped
-                    }
-                case SendToCollector(cart) =>
-                    collector ! CartIsReady(cart)
-                    Behaviors.stopped
-            }
-            Behaviors.same
+    def download(ctx: ActorContext[Message]): Behavior[Message] = {
+        val endpoint = "https://young-crag-34985.herokuapp.com/cart"
+        implicit val ec: ExecutionContextExecutor = ctx.system.executionContext
+        implicit val system: ActorSystem[Nothing] = ctx.system
+        val req = Http(ctx.system)
+          .singleRequest(HttpRequest(uri = endpoint))
+          .flatMap(resp => Unmarshal(resp.entity).to[Cart])
+        ctx.pipeToSelf(req) {
+            case Success(c) => CartFetched(c)
+            case Failure(e) => FetchingFailure(e.toString)
         }
-        
-
-    def sendFurtherOrRaise(data: Try[Cart]): Command = {
-        data match {
-            case Success(cart) => SendToCollector(cart)
-            case Failure(exception) => 
-                throw new RuntimeException(s"Error while parsing cart: $exception")
-        }
+        listen()
     }
+
+    def listen(): Behavior[Message] = Behaviors.receiveMessage {
+        case CartFetched(c) =>
+            sendTo ! Collector.CartIsReady(c)
+            Behaviors.stopped
+        case FetchingFailure(_) =>
+            // Todo do smth?
+            Behaviors.stopped
+    }
+
 }
