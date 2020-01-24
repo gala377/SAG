@@ -8,7 +8,6 @@ import akka.cluster.typed.Cluster
 
 import com.typesafe.config.{ConfigFactory, Config}
 
-
 object App {
   
   val Roles: Map[String, actors.Guardian] = Map(
@@ -28,19 +27,18 @@ object App {
             ctx.spawnAnonymous(actor(args, config))
           }
         }
-
         Behaviors.empty
     }
   }
 
   def main(args: Array[String]): Unit = {
-    if (args.size < 2) {
+    if (args.length < 2) {
       throw new RuntimeException("Need a role and a port")
     }
 
     val role = args(0)
     if (!Roles.contains(role)) {
-      throw new RuntimeException(s"Unkown role $role")
+      throw new RuntimeException(s"Unknown role $role")
     }
 
     start(role, args(1).toInt, args.drop(2))

@@ -1,7 +1,5 @@
 package sag.recorder
 
-import java.util.concurrent.TimeUnit
-
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 import sag.payload.{CborSerializable, JoinedCart}
@@ -31,16 +29,15 @@ object Recorder {
       timeout: FiniteDuration
     ): Behavior[Message] = Behaviors.receive {
         (ctx, message) =>
+            ctx.setLoggerName("sag.recorder.Recorder")
             message match {
-                case Data(cart) => {
+                case Data(cart) =>
                     ctx.log.info(s"Got cart:\n${cartRepr(cart)}")
                     timer.startSingleTimer(TimerKey, TimeoutMsg(), timeout)
                     Behaviors.same
-                }
-                case TimeoutMsg() => {
-                    ctx.log.warn("RECORDER TIMEOUT!")
+                case TimeoutMsg() =>
+                    ctx.log.warn("Timed out on joiner")
                     Behaviors.same
-                }
             }
     }
 
