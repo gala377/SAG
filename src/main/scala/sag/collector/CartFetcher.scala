@@ -39,13 +39,15 @@ private class CartFetcher(sendTo: ActorRef[Collector.Command]) {
         listen()
     }
 
-    def listen(): Behavior[Message] = Behaviors.receiveMessage {
-        case CartFetched(c) =>
-            sendTo ! Collector.CartIsReady(c)
-            Behaviors.stopped
-        case FetchingFailure(_) =>
-            // Todo do smth?
-            Behaviors.stopped
+    def listen(): Behavior[Message] = Behaviors.receive {
+        (ctx, message) => message match {
+            case CartFetched(c) =>
+                sendTo ! Collector.CartIsReady(c)
+                Behaviors.stopped
+            case FetchingFailure(_) =>
+                ctx.log.warn("Couldn't fetch online resource")
+                Behaviors.stopped
+        }
     }
 
 }
