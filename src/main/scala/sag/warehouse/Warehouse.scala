@@ -17,7 +17,6 @@ import sag.payload._
 object Warehouse {
 
     private[warehouse] type Orders = Map[Order.Id, OrderInfo]
-    
     private[warehouse] object OrderInfo {
 
         sealed trait OrderState
@@ -64,6 +63,10 @@ object Warehouse {
         id: Order.Id,
         product: Product
     ) extends Message with CborSerializable
+    final case class FetchingFailed(
+        id: Order.Id,
+        reason: String,
+    ) extends Message with CborSerializable
 
     def apply(): Behavior[Message] =
         new Warehouse().listen(Map())
@@ -98,6 +101,9 @@ private class Warehouse {
                             .toSeq)
                         listen(orders - id)
                 }
+            case FetchingFailed(id, reason) =>
+                ctx.log.info(s"Failed fetching for order $id: $reason. Cancelling order...")
+                listen(orders - id)
             case _ => Behaviors.same
         }
     }

@@ -50,8 +50,8 @@ private class ProductFetcher(
             case ProductFetched(p) =>
                 warehouse ! Warehouse.ProductFetched(id, p)
                 Behaviors.stopped
-            case FetchingFailure(_) =>
-                // TODO: Send info to warehouse that the fetching failed
+            case FetchingFailure(e) =>
+                warehouse ! Warehouse.FetchingFailed(id, e)
                 Behaviors.stopped
     }
 }
