@@ -20,7 +20,7 @@ object Collector {
     def apply(sendTo: ActorRef[Joiner.Message], timeout: FiniteDuration): Behavior[Command] =
         Behaviors.setup { ctx =>
             Behaviors.withTimers { timer =>
-                ctx.self ! DownloadNext()
+                timer.startTimerAtFixedRate(DownloadNext(), timeout)
                 new Collector(timer, timeout).collectAndSend(sendTo)
             }
         }
@@ -41,9 +41,9 @@ private class Collector(timer: TimerScheduler[Collector.Command], timeout: Finit
                     ctx.spawnAnonymous(CartFetcher(ctx.self))
                     collectAndSend(joinerRef)
                 case CartIsReady(cart) =>
+                    ctx.setLoggerName(this.getClass())
                     ctx.log.info(s"Sending cart $cart to joiner")
                     joinerRef ! Joiner.Data(cart)
-                    timer.startSingleTimer(TimerKey, DownloadNext(), timeout)
                     collectAndSend(joinerRef)
             }
         }
