@@ -1,20 +1,17 @@
 package sag.joiner
 
-import akka.actor.typed.scaladsl.ActorContext
-import akka.actor.typed.ActorRef
-import akka.actor.typed.Behavior
-import akka.actor.typed.receptionist.Receptionist
-import akka.actor.typed.receptionist
-import akka.actor.typed.scaladsl.Behaviors
-import sag.{actors, recorder, warehouse}
-import sag.joiner.Joiner.{CacheRecorder, CacheWarehouse, StartCaching, StopCachingRecorder, StopCachingWarehouse}
 import java.util.concurrent.TimeUnit
+
+import akka.actor.typed.{ActorRef, Behavior, receptionist}
+import akka.actor.typed.receptionist.Receptionist
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import com.typesafe.config.Config
+import sag.joiner.Joiner._
+import sag.{actors, recorder, warehouse}
+
 import scala.concurrent.duration.FiniteDuration
 
 object Guardian extends actors.Guardian {
-
-  val ORDER_TIMEOUT_IN_SECONDS = 5
 
   val ServiceKey: receptionist.ServiceKey[Joiner.Message] =
     receptionist.ServiceKey("Joiner")
@@ -25,21 +22,23 @@ object Guardian extends actors.Guardian {
         warehouse.Guardian.ServiceKey, ctx.self)
       ctx.system.receptionist ! Receptionist.Subscribe(
         recorder.Guardian.ServiceKey, ctx.self)
-      new Guardian().findDependantActors(IncompleteState(None, None))
+      new Guardian(
+        config.getLong("sag.joiner.timeout")
+      ).findDependantActors(IncompleteState(None, None))
     }
 
   final case class IncompleteState(
     rec: Option[ActorRef[recorder.Recorder.Data]],
     war: Option[ActorRef[warehouse.Warehouse.Message]],
   ) {
-    def isComplete: Boolean = rec.isDefined && war.isDefined
-
     def unwrap: (ActorRef[recorder.Recorder.Data], ActorRef[warehouse.Warehouse.Message]) =
       if (isComplete) {
         (rec.get, war.get)
       } else {
         throw new RuntimeException("Trying to unwrap incompleted state")
       }
+
+    def isComplete: Boolean = rec.isDefined && war.isDefined
   }
 
   final case class WorkingState(
@@ -51,7 +50,7 @@ object Guardian extends actors.Guardian {
   }
 }
 
-private class Guardian {
+private class Guardian(joinerTimeout: Long) {
 
   import Guardian._
 
@@ -109,7 +108,7 @@ private class Guardian {
         war,
         rec, 
         new FiniteDuration(
-          ORDER_TIMEOUT_IN_SECONDS,
+          joinerTimeout,
           TimeUnit.SECONDS)
       ))
       ctx.system.receptionist ! Receptionist.Register(
@@ -138,22 +137,18 @@ private class Guardian {
     addresses: Set[ActorRef[warehouse.Warehouse.Message]],
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] = {
-    if (state.war.isDefined && addresses.contains(state.war.get) == false) {
+    if (state.war.isDefined && !addresses.contains(state.war.get)) {
       ctx.log.warn("Warehouse left the cluster. Changing into caching mode")
       state.joiner ! StartCaching(CacheWarehouse)
-
       return monitorDependantActors(WorkingState(state.joiner, state.rec, None))
     }
-
     if (state.war.isEmpty && addresses.nonEmpty) {
       ctx.log.info("Found new warehouse. Stopping caching")
-
       val war = addresses.toIndexedSeq(0)
       state.joiner ! StopCachingWarehouse(war)
       return monitorDependantActors(WorkingState(state.joiner, state.rec, Some(war)))
     }
-
-    return monitorDependantActors(state)
+    monitorDependantActors(state)
   }
 
   def checkRecorder(
@@ -161,13 +156,12 @@ private class Guardian {
     addresses: Set[ActorRef[recorder.Recorder.Data]],
     ctx: ActorContext[Receptionist.Listing]
   ): Behavior[Receptionist.Listing] = { 
-    if (state.rec.isDefined && addresses.contains(state.rec.get) == false) {
+    if (state.rec.isDefined && !addresses.contains(state.rec.get)) {
       ctx.log.warn("Recorder left the cluster. Changing into caching mode")
       state.joiner ! StartCaching(CacheRecorder)
 
       return monitorDependantActors(WorkingState(state.joiner, None, state.war))
     }
-
     if (state.rec.isEmpty && addresses.nonEmpty) {
       ctx.log.info("Found new recorder. Stopping caching")
 
@@ -175,7 +169,6 @@ private class Guardian {
       state.joiner ! StopCachingRecorder(rec)
       return monitorDependantActors(WorkingState(state.joiner, Some(rec), state.war))
     }
-
-    return monitorDependantActors(state)
+    monitorDependantActors(state)
   }
 }
