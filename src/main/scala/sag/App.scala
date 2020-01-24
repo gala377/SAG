@@ -6,7 +6,7 @@ import akka.actor.typed.{ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.cluster.typed.Cluster
 
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigFactory, Config}
 
 
 object App {
@@ -19,13 +19,13 @@ object App {
   )
 
   object Root {
-    def apply(args: Array[String]): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
+    def apply(args: Array[String], config: Config): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
         ctx.log.info(s"Starting actor system.")
         val cluster = Cluster(ctx.system)
         for((role, actor) <- Roles) {
           if(cluster.selfMember.hasRole(role)) {
             ctx.log.info(s"System role is $role")
-            ctx.spawnAnonymous(actor(args))
+            ctx.spawnAnonymous(actor(args, config))
           }
         }
 
@@ -52,6 +52,6 @@ object App {
       akka.cluster.roles = [$role]
     """).withFallback(ConfigFactory.load("application"))
 
-    val system = ActorSystem[Nothing](Root(args), "Sag", config)
+    val system = ActorSystem[Nothing](Root(args, config), "Sag", config)
   }
 }

@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 import akka.actor.typed.receptionist.Receptionist
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior, receptionist}
+import com.typesafe.config.Config
 import sag.collector.Collector.{StartCaching, StartSending}
 import sag.{actors, joiner}
 
@@ -12,16 +13,17 @@ import scala.concurrent.duration.FiniteDuration
 
 object Guardian extends actors.Guardian {
     val ServiceKey: receptionist.ServiceKey[Collector.Command] = receptionist.ServiceKey[Collector.Command]("Collector")
-    val COLLECTOR_TIMEOUT_IN_SEC = 1
 
-    def apply(args: Array[String]): Behavior[Receptionist.Listing] =
+    def apply(args: Array[String], config: Config): Behavior[Receptionist.Listing] =
         Behaviors.setup { ctx =>
             ctx.system.receptionist ! Receptionist.Subscribe(joiner.Guardian.ServiceKey, ctx.self)
-            new Guardian().spawnCollector()
+            new Guardian(
+                config.getLong("sag.collector.timeout")
+            ).spawnCollector()
         }
 }
 
-private class Guardian {
+private class Guardian(collectorTimeout: Long) {
 
     import Guardian._
 
@@ -37,7 +39,7 @@ private class Guardian {
                         ctx.log.info(s"Spawning collector")
                         val joiner = listings.toIndexedSeq(0)
                         val collector = ctx.spawnAnonymous(
-                            Collector(joiner, new FiniteDuration(COLLECTOR_TIMEOUT_IN_SEC, TimeUnit.SECONDS)))
+                            Collector(joiner, new FiniteDuration(collectorTimeout, TimeUnit.SECONDS)))
                         ctx.system.receptionist ! Receptionist.Register(ServiceKey, collector)
                         checkState(joiner, collector)
                     }
@@ -75,7 +77,7 @@ private class Guardian {
     ): Behavior[Receptionist.Listing] = {
         Behaviors.receive { (ctx, message) =>
             message match {
-                case joiner.Guardian.ServiceKey.Listing(listings) if !listings.isEmpty => {
+                case joiner.Guardian.ServiceKey.Listing(listings) if listings.nonEmpty => {
                     val joiner = listings.toIndexedSeq(0)
                     ctx.log.info(s"Sending new joiner reference")
                     collectorRef ! StartSending(joiner)

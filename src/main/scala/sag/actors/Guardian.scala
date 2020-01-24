@@ -1,9 +1,10 @@
 package sag.actors
 
+import com.typesafe.config.Config
+
 import akka.actor.typed.Behavior
 import akka.actor.typed.receptionist.Receptionist
-import akka.actor.typed.scaladsl.Behaviors
 
 trait Guardian {
-  def apply(args: Array[String]): Behavior[Receptionist.Listing]
+  def apply(args: Array[String], config: Config): Behavior[Receptionist.Listing]
 }
